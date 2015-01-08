@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>CS111 Lecture 1 Scribe Notes</title>
+    <meta charset="UTF-8">
+</head>
+<body>
+    <h1 style="text-decoration: underline">Computer Science 111: Operating Systems Principles</h1>
+    <h1>Lecture 1 Scribe Notes - 01/05/2015<h1>
+    <!--Stuff from beginning of class goes here
+    
+    -->
+    <h2>Course Overview</h2>
+    <p><b>Course Website: </b><a href="http://cs.ucla.edu/classes/winter15/cs111">cs.ucla.edu/classes/winter15/cs111</a></p>
+    <p><b>Course Textbook: </b>Saltzer and Kaashoek, Principles of Computer System Design: an Introduction (2009)</p>
+    <p>
+        <b>Course Organization and Grading:</b>
+        <ul>
+            <li>17 Lectures</li>
+            <li>
+                <span style="text-decoration: underline">Exams</span>:
+                <ul>
+                    <li>1 Midterm (100 minutes): Open Book &amp; Open Notes</li>
+                    <li>1 Final (180 minutes): Open Book &amp; Open Notes</li>
+                </ul>
+            </li>
+            <li>
+                <span style="text-decoration: underline">Assignments</span>:
+                <ul>
+                    <li>
+                    4 Labs (groups of 2 or less)
+                    <ol>
+                        <li>Write a shell with performance features</li>
+                        <li>Kernel Hacking</li>
+                        <li>Writing a File System</li>
+                        <li>Distributed</li>
+                    </ol>
+                    </li>
+                    <li>
+                    2 Minilabs (solo)
+                    <ol>
+                        <li>CPU Scheduling</li>
+                        <li>Virtual Memory</li>
+                    </ol>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <span style="text-decoration: underline">Design Problem</span>:
+                <ul>
+                    <li>Work in groups of 2</li>
+                    <li>Oral Presentation and Written Report</li>
+                </ul>
+            </li>
+            <li>
+                <span style="text-decoration: underline">Scribe Notes</span>:
+                <ul>
+                    <li>Work in groups of at most 4</li>
+                    <li>Make a webpage containing the notes for the day&#39;s notes using HTML5 or HTML4.1</li>
+                    <li>Due 1 week after chosen lecture</li>
+                </ul>
+            </li>
+            <li>
+                <span style="text-decoration: underline">Paper</span>:
+                <ul>
+                    <li>2&ndash;3 page research/review paper</li>
+                    <li>Choose 1 topic from the list of topics that Professor Eggert will provide</li>
+                </ul>
+            </li>
+        </ul>
+    </p>
+    <table>
+        <tr>
+            <th colspan="2">Grade Distribution</th>
+        </tr>
+        <tr>
+            <td>1/9</td>
+            <td>Midterm</td>
+        </tr>
+        <tr>
+            <td>2/9</td>
+            <td>Final</td>
+        </tr>
+        <tr>
+            <td>1/3</td>
+            <td>Labs (1/12 each)</td>
+        </tr>
+        <tr>
+            <td>2/15</td>
+            <td>Minilabs (1/15 each)</td>
+        </tr>
+        <tr>
+            <td>1/12</td>
+            <td>Design Problem</td>
+        </tr>
+        <tr>
+            <td>1/20</td>
+            <td>Scribe Notes</td>
+        </tr>
+        <tr>
+            <td>1/15</td>
+            <td>Research/Review Paper</td>
+        </tr>
+    </table>
+    <h2>What is an Operating System?</h2>
+    <h3>Operating System Headlines</h3>
+    <p>
+        <a href="http://news.sky.com/story/1400203/red-star-3-0-north-korea-launches-its-own-os" target="_blank">Red Star 3.0: North Korea launches its own OS<a>
+        2014-12-31 Sky News (UK)
+        <br />
+        <a href="http://liliputing.com/2014/12/crouton-chromebooks-run-ubuntu-browser-tab.html" target="_blank">Crouton for Chromebooks: Run Ubuntu in a browser tab</a>
+        2014-12-28 liliputing
+        <br />
+        <a href="http://www.cnet.com/news/samsungs-troubled-tizen-software-ready-for-primetime-on-tvs-at-ces-2015/" target="_blank">Samsung’s troubled Tizen software ready for prime time on TVs</a>
+        2014-01-05 CNet
+    </p>
+    <p>
+        Quote from The Economist: <br />
+        <i>“We don’t offer a ready-made programme, but an entire operation system”</i>
+        by Marina Weisbard, Germany Pirate Party, 2013-01-05
+    </p>
+    <h3>First, what is a <u>System</u>?</h3>
+    <ul>
+        <li>
+            <b>Oxford English Dictionary (1928) Definition:</b>
+            <ol type="I">
+                <li>An organized or connected group of objects</li>
+                <li>A set of principles, a scheme, a method, etc.</li>
+            </ol>
+        </li>
+        <li>
+            <b>Etymology</b>: σύστημα Greek for "an organized whole, government, or constitution" <br />
+            <b>Root</b>: "set up with"
+        </li>
+        <li>
+            <b>Textbook Definition (Section 1.A.2)</b>
+            <ul>
+                <li>
+                    A set of interconnected components that has a specified behavior observed at the interface with its environment
+                </li>
+            </ul>
+        </li>
+    </ul>
+    <h3>Now, what is an <u>Operating System</u>?</h3>
+    <ul>
+        <li>
+            <b>Encarta (2007)</b>
+            <ul>
+                <li>Master <u>control</u> program in a computer</li>
+            </ul>
+        </li>
+        <li>
+            <b>American Heritage Dictionary, 4th Edition, 2000</b>
+            <ul>
+                <li>Software designed to <u>control</u> the hardware of a <span style="text-decoration: line-through">specific data processing system</span> 
+                    in order to allow <u>users and application programs</u> to make use of it.</li>
+            </ul>
+        </li>
+        <li>
+            <b>Wikipedia, Version 640779030, 2015-01-03</b>
+            <ul>
+                <li>
+                    Software that <i>manages</i> computer hardware and software <b>resources</b> and provides <u>common services</u> for computer programs
+                </li>
+            </ul>
+        </li>
+    </ul>
+    <h3>Common Systems Problems</h3>
+    <ol type="I">
+        <li>
+            Incommensurate Scaling (Quantitative)
+        </li>
+        <li>
+            Emergent Properties (Qualitative)
+        </li>
+        <li>
+            Propagation of Effects
+        </li>
+        <li>
+            Design Tradeoffs
+            <ul></ul>
+        </li>
+        <li>
+            Complexity
+            <ul>
+                <li>Moore's Law: complexity of devices, at the cheapest design points, doubles every 18-24 months</li>
+                <li>Kryder's Law: similar to Moore's law, but applies to disk capacity instead </li>
+            </ul>
+        </li>
+    </ol>
+</body>
+</html>

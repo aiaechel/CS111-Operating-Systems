@@ -19,7 +19,7 @@
 #include "command-internals.h"
 #include "alloc.h"
 
-#include <cstdio.h>
+#include <stdio.h>
 #include <ctype.h>
 #include <error.h>
 
@@ -53,6 +53,7 @@ make_command_stream (int (*get_next_byte) (void *),
         {
             if(everything != NULL)
                 free(everything);
+            fclose(get_next_byte_argument);
             error(1, 0, "%d: Syntax error found: char %c is not allowed!", line_num, a);
             return 0;
         }
@@ -62,6 +63,7 @@ make_command_stream (int (*get_next_byte) (void *),
         everything[size++] = a;
     }
     command_t* command_list = format_everything(everything, 0, size - 1);
+    fclose(get_next_byte_argument);
     free(everything);
     return command_list;
 }    
@@ -74,46 +76,100 @@ read_command_stream (command_stream_t s)
 }
 
 command_t* 
-read_everything(char* array, int beg, int end)
+format_everything(char* array, int beg, int end)
 {
+    int word_beg, word_end, reserved = 0, num_commands = 0, valid_command = 0, int compound_end = end;
+    char splitter = 0;
+    command_t* command_list;
+    command_t comp_command, cur_command, container;
+    command reference;
+    while(beg < end + 1)
+    {
+        word_beg = beg;
+        word_end = end;
+        read_word(array, &word_beg, &word_end);
+        reserved = check_reserved_word(array, word_beg, word_end);
+        if(reserved)
+        {
+            comp_command = compound_cmd(array, word_beg, &word_end, reserved);
+            if(comp_command == NULL)
+            {
+                //some error here
+            }
+            compound_end = word_end;
+            valid_command = 1;
+            /*cur_command = compound_cmd(array, &word_beg, &word_end, reserved);
+            if(cur_command == NULL)
+            {
+                free_everything(command_list, num_commands, array);
+                error(1, 0, "Command not in correct format!\n");
+            }
+            command_list = (command_t*) checked_realloc(command_list, num_commands + 1);
+            command_list[num_commands++] = command_list;
+            beg = word_end + 1;
+            while(beg != end + 1)
+            {
+                if(array[beg] == ';' || array[beg] == '\n')
+                {
+                    sequence = 1;
+                }
+            }*/
+        }
+        while(word_end < end + 1 && array[word_end] != '|' && array[word_end] != ';' && array[word_end] != '\n')
+        {
+            word_end++;
+        }
+        if(valid_command)
+        {
+            cur_command = format_function(array, word_beg, word_end - 1, '|', comp_command, compound_end + 1);
+        }
+        else
+        {
+            cur_command = format_function(array, word_beg, word_end - 1);
+        }
+        if(splitter == '|' || splitter == '\n' || splitter == ';')
+        {
+            container = (command_t) checked_malloc(sizeof(reference));
+            container->u[0] = command_list[num_commands - 1];
+            container->u[1] = cur_command;
+            container->status = -1;
+            container->type = splitter == '|' ? PIPE_COMMAND : SEQUENCE_COMMAND;
+            command_list[num_commands] = container;
+        }
+        else
+        {
+            command_list = (command_t*) checked_realloc(command_list, num_commands + 1);
+            command_list[num_commands++] = cur_command;
+        }
+        splitter = array[word_end];
+        beg = word_end + 1;
+        if(splitter == ';' || splitter == '\n')
+        {
+            if(beg < end + 1 && array[beg] == '\n')
+            {
+                valid_command = 0;
+                compound_end = end;
+                compound_command = NULL;
+                cur_command = NULL;
+                container = NULL;
+                splitter = 0;
+            }
+        }
+    }
 }
 
 command_t
-compound_cmd(char* array, int beg, int end)
+compound_cmd(char* array, int beg, int* end, int type)
 {
+    
 }
 
 command_t
-format_function (char* array, int beg, int end, char type = '|')
+format_function (char* array, int beg, int end, char type = '|', command_t compound = NULL, int compound_end = 0)
 {
     int index = beg, less = end + 1, greater = end + 1;
     command_t first, second, container;
     command reference;
-    if(type == ')')
-    {
-        int counter = 1;
-        while(index != end + 1 && array[index] != ')')
-        {
-            if(array[index] == '(')
-                counter++;
-            else if(array[index] == ')')
-                counter--;
-            if(counter == 0)
-                break;
-            if(index == beg && isspace(array[index])
-                beg++;
-            index++;
-        }
-        if(counter != 0)
-            return NULL;
-        /*first = format_command(
-          container = (command_t) malloc(sizeof(struct command));
-          container->u.command[0] = first;
-          container->type = SUBSHELL_COMMAND;
-          container->status = -1;
-          return container;
-        */
-    }
     while (index != end + 1 && (array[index] != '|' && (type == '|' || array[index] == ';' || array[index] == '\n'))
     {
         if(array[index] == '<')
@@ -128,10 +184,6 @@ format_function (char* array, int beg, int end, char type = '|')
                 return NULL;
             greater = index;
         }
-        else if(array[index] == '(')
-        {
-            return format_function(array, index + 1, end, ')');
-        }
         if(index == beg)
         {
             if(isspace(array[index]))
@@ -143,7 +195,7 @@ format_function (char* array, int beg, int end, char type = '|')
         }
         index++;
     }
-    if(index == beg || (index == end && array[index] == '|')
+    if(index == beg)
         return NULL;
     first = (command_t) checked_malloc(sizeof(reference));
     first->u.word = (char**) checked_malloc(sizeof(char*));
@@ -179,7 +231,7 @@ read_word(char* array, int* beg, int* end)
 }
 
 int
-check_reserved_word(char* array, int* beg, int* end)
+check_reserved_word(char* array, int beg, int end)
 {
     
 }
@@ -200,6 +252,19 @@ remove_whitespace(char* array, int beg, int end)
     return text;
 }
 
+void
+free_everything(command_t* list, int size, char* array = NULL)
+{
+    if(list != NULL)
+        for(int i = 0; i < size; i++)
+        {
+            if(list[i] != NULL)
+                free(list[i]);
+        }
+        free(list);
+    if(array != NULL)
+        free(array);
+}
 int
 check_char(int a)
 {

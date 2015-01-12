@@ -9,7 +9,7 @@
 <div>
     <h1><u>Computer Science 111: Operating Systems Principles</u></h1>
     <h1>Winter 2015 Lecture 1 Scribe Notes - 01/05/2015</h1>
-    <h3>By: Andrew Lee, Maya Adkins, Michelle Chang</h3>
+    <h4>By: Andrew Lee, Maya Adkins, Michelle Chang</h4>
     <h2><u>Course Overview</u></h2>
     <p><b>Course Website: </b><a href="http://cs.ucla.edu/classes/winter15/cs111">cs.ucla.edu/classes/winter15/cs111</a></p>
     <p><b>Course Textbook: </b>Saltzer and Kaashoek, Principles of Computer System Design: an Introduction (2009)</p>
@@ -70,7 +70,7 @@
         </ul>
     <table>
         <tr>
-            <th colspan="2">Grade Distribution</th>
+            <th colspan="2">Total Grade Distribution</th>
         </tr>
         <tr>
             <td>1/9</td>
@@ -138,7 +138,7 @@
             <b>Root</b>: "set up with"
         </li>
         <li>
-            <b>Textbook Definition (Section 1.A.2)</b>
+            <b>Textbook Definition (Section 1.A.2):</b>
             <ul>
                 <li>
                     A set of interconnected components that has a specified behavior observed at the interface with its environment
@@ -169,7 +169,7 @@
             <b>Wikipedia, Version 640779030, 2015-01-03</b>
             <ul>
                 <li>
-                    Software that <i>manages</i> computer hardware and software <b>resources</b> and provides <u>common services</u> for computer programs
+                    Software that <u><i>manages</i></u> computer hardware and software <b>resources</b> and provides <u>common services</u> for computer programs
                 </li>
             </ul>
         </li>
@@ -191,7 +191,7 @@
                         </li>
                         <li>
                             <b>Example: Human Size Scaling</b> <br />
-                            If we tried to stretch out the human body by a large amount, while still keeping the subject alive and well, we would run into a lot of problems. Depending on how we stretch the body, we could end up with an exponential increase in the amount of resources needed to sustain the body and the amount of waste the disproportional body will produce. This huge increase in costs will eventually cause the stretched body to fail, due to the diseconomies of scale.
+                            If we tried to stretch out the human body by a large amount, while still keeping the subject alive and well, we would run into a lot of problems. Depending on how we stretch the body, we could end up with an exponential increase in the amount of resources needed to sustain the body and in the amount of waste it will produce. This huge increase in costs will eventually cause the stretched body to fail, due to the diseconomies of scale.
                         </li>
                     </ul>
                </li>
@@ -201,7 +201,7 @@
                         <li><b>Definition:</b> As a product grows larger, the cheaper it is by the unit. This scaling can cause waste when too much product is created, forcing us to dispose of the surplus product.</li>
                         <li><b>Example: Pin Factory</b> <br />
                             Individuals could make their own pins by hand, but this process would be extremely inefficient.
-                            Rather than hand-making each pin, those same individuals could build a pin factory that uses machines to produce more pins in the same amount of time at a decreased cost, resulting in an increase in efficiency.
+                            Rather than hand-making each pin, those same individuals could build a pin factory that uses machines to produce more pins in the same amount of time at a reduced cost, resulting in an increase in efficiency.
                         </li>
                     </ul>
                </li>
@@ -213,7 +213,7 @@
                 <li><b>Definition:</b> properties that are not accounted for at time of creation that can cause problems at a later time</li>
                 <li><b>Example: UCLA's new fast network</b>
                     <br />
-                    As the birthplace of the Internet, UCLA decided to upgrade its network to a faster speed and also routed this new internet to student housing, for students to use for mainly academic purposes. This all sounds great, but an unforeseen problem (emergent property) appeared: students took advantage of this huge boost in bandwidth to pirate music using programs like Napster. At one point, close to 80% of the network was being used to pirate music, and UCLA got lots of cease and desist notices from companies.
+                    As the birthplace of the Internet, UCLA decided to upgrade its network to a faster speed and decided to route this new internet to student housing, for students to use for mainly academic purposes. This all sounds great, but an unforeseen problem (emergent property) appeared: students took advantage of this huge boost in bandwidth to pirate music, using programs like Napster. At one point, close to 80% of the network was being used to pirate music, and UCLA got lots of cease and desist notices from companies that it could not have expected at the creation of the network.
                 </li>
                 <li>
                     <b>Example: Tacoma Narrows Bridge</b>
@@ -225,27 +225,27 @@
         <li>
             <b>Propagation of Effects</b>
             <ul>
-                <li>Definition: small changes made to one area can cause problems in other seemingly unrelated areas</li>
+                <li><b>Definition:</b> small changes made to one area can cause problems in other seemingly unrelated areas</li>
                 <li>
                     <b>Example: Japanese Text Encoding in a File System</b><br />
-                    Let's say Microsoft used UTF-8 to encode filenames on their servers, and some other company used S-JIS to encode their filenames. S-JIS is an encoding scheme for Japanese characters, where all characters come in sets of 1 or 2 bytes. The first bit in the set determines whether the character takes 1 byte (normal character) or 2 bytes (Japanese character). If Microsoft, obtained a file with a name encoded in S-JIS and tried to process the filename, we would end up with a problem. This example shows how two seemingly separate systems can still cause problems with each other.
+                    Let's say Microsoft used UTF-8 to encode filenames on their servers, and some other company used S-JIS to encode their filenames. S-JIS is an encoding scheme for Japanese characters, where all characters come in sets of 1 or 2 bytes. The first bit in the set determines whether the character takes 1 byte (normal character) or 2 bytes (Japanese character). If Microsoft, obtained a file with a name encoded in S-JIS and tried to process the filename, they could end up with a problem, if there are any Japanese characters in that filename. This example shows how two seemingly separate systems can still affect each other.
                 </li>
             </ul>
         </li>
         <li>
             <b>Design Tradeoffs</b>
             <ul>
-                <li><b>Waterbed Effect:</b> solving one problem, but actually pushing the problem elsewhere or creating a whole new problem elsewhere, like a waterbed, where you step on one end, bringing one part lower, but then a different part of the bed goes higher.</li>
+                <li><b>Waterbed Effect:</b> solving one problem, but actually pushing the problem elsewhere or creating a whole new problem elsewhere, like a waterbed: you step on one end, bringing that part lower, but then a different part of the bed goes higher.</li>
                 <li><b>Time-Space tradeoffs:</b> An algorithm could take a lot of time, but use a small amount of memory. Conversely, an algorithm could run really quickly, but it could use a large amount of memory in execution.</li>
-                <li><b>Time-Energy tradeoffs:</b> A hardware component could help the system run faster, but its power requirements could be higher. Conversely, the component could be slower than other options, but have a lower power consumption requirement.
+                <li><b>Time-Energy tradeoffs:</b> A hardware component could help the system run faster, but its power requirements could be higher. Conversely, the component could be slower than other options, but have a lower power consumption requirement than those other components.
                 <li><b>Example: Sorting Algorithms</b><br />
-                Some sorting algorithms work well when there is a small number of objects to sort (ex. bubble sort). However, when the number of objects grows, we start to look algorithms that perform well with larger numbers of objects, at the cost of efficiency for lower numbers of objects (ex. merge sort). This shows that when we make design decisions, there will be options where a certain component will excel in one area, but will be less efficient than other components in other areas.
+                Some sorting algorithms work well when there is a small number of objects to sort (ex. bubble sort). However, when the number of objects grows, we start to look for algorithms that perform well with larger numbers of objects, at the cost of efficiency for smaller numbers of objects (ex. merge sort). This shows that when we make design decisions, there will be options where a certain component will excel in one area, but will be less efficient than other components in other areas.
             </ul>
         </li>
         <li>
             <b>Complexity</b>
             <ul>
-                <li>Systems and system components get more complex as time goes on, meaning systems designers must adapt to these new technologies when thinking about how they want to design a system.</li>
+                <li>Systems and system components get more complex as time goes on, meaning system designers must adapt to these new technologies when thinking about how they want to design a system.</li>
                 <li><b>Moore's Law:</b> complexity of devices, at the cheapest design points, doubles every 18-24 months</li>
                 <li><b>Kryder's Law:</b> similar to Moore's law, but applies to disk capacity instead </li>
             </ul>

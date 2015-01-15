@@ -40,6 +40,7 @@ int check_reserved_word(char* array, int beg, int end);
 char read_word(char* array, int* beg, int* end);
 command_t format_function (char* array, int beg, int end, command_t reserved);
 void split_everything(char* array, int beg, int end);
+void make_error (int linenum);
 
 command_stream_t
 make_command_stream (int (*get_next_byte) (void *),
@@ -724,4 +725,10 @@ free_stream(command_stream c)
     {
         free_command(c.command_list[i]);
     }
+}
+
+void
+make_error (int linenum)
+{
+    printf("%d:There is a syntax error here.", linenum);
 }

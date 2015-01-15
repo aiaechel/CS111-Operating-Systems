@@ -20,6 +20,7 @@
 #include "alloc.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <ctype.h>
 #include <error.h>
 
@@ -28,10 +29,17 @@
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
-struct command_stream
+struct command_stream_t
 {
     command_t* command_list;
 };
+int check_char(int a, int flag);
+void free_everything(command_t* list, int size);
+char* remove_whitespace(char* array, int beg, int end);
+int check_reserved_word(char* array, int beg, int end);
+char read_word(char* array, int* beg, int* end);
+command_t format_function (char* array, int beg, int end, command_t reserved);
+void split_everything(char* array, int beg, int end);
 
 command_stream_t
 make_command_stream (int (*get_next_byte) (void *),
@@ -40,24 +48,22 @@ make_command_stream (int (*get_next_byte) (void *),
   /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
-    command_stream ret;
+    command_stream_t ret;
     command_t error = NULL;
     command reference;
     char a, prevChar = '\n';
-    size_t max_size = 1024;
+    size_t max_size = 1024, size = 0;
     char* everything = (char*) checked_malloc(max_size);
-    int line_num = 1, size = 0, saved_location = 0;
-    int paren_line, open_paren = 0, invalid = 0;
-    while(a = get_next_byte(get_next_byte_argument))
+    while((a = get_next_byte(get_next_byte_argument)))
     {
         if(size == max_size - 2)
             everything = (char*) checked_grow_alloc(everything, &max_size);
         everything[size++] = a;
         prevChar = a;
     }
-    stream.command_list = format_everything(everything, 0, size - 1);
+    ret.command_list = format_everything(everything, 0, size - 1);
     free(everything);
-    return stream;
+    return ret;
 }    
 command_t
 read_command_stream (command_stream_t s)
@@ -249,7 +255,7 @@ split_everything(char* array, int beg, int end)
                                 case 8: //until
                                     if(done_size < compound_count[5] + compound_count[8] + 1)
                                     {
-                                        done_check = (int* ) realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
+                                        done_check = (int* ) checked_realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
                                         done_size++;
                                     }
                                     done_check[compound_count[5] + compound_count[8]] = reserved;
@@ -458,11 +464,6 @@ format_everything(char* array, int beg, int end)
     }
 }
 */
-command_t
-compound_cmd(char* array, int beg, int* end, int type)
-{
-    
-}
 
 command_t
 format_function (char* array, int beg, int end, command_t reserved)
@@ -475,7 +476,7 @@ format_function (char* array, int beg, int end, command_t reserved)
         if(reserved && !flag)
         {
             if(array[index] == '\n' || array[index] == ';')
-                return;
+                return NULL;
             else if(isspace(array[index]))
             {
                 index++;
@@ -493,7 +494,7 @@ format_function (char* array, int beg, int end, command_t reserved)
         if(array[index] == '<')
         {
             if (greater < end + 1 || less < end + 1 || (!reserved && !word))
-                return;
+                return NULL;
             less = index;
             flag = 1;
             word = 0;
@@ -647,12 +648,12 @@ remove_whitespace(char* array, int beg, int end)
     {
         text[i] = array[beg + i];
     }
-    test[i] = '\0';
+    text[i] = '\0';
     return text;
 }
 
 void
-free_everything(command_t* list, int size, char* array = NULL)
+free_everything(command_t* list, int size)
 {
     if(list != NULL)
         for(int i = 0; i < size; i++)
@@ -661,8 +662,6 @@ free_everything(command_t* list, int size, char* array = NULL)
                 free(list[i]);
         }
         free(list);
-    if(array != NULL)
-        free(array);
 }
 int
 check_char(int a, int flag)

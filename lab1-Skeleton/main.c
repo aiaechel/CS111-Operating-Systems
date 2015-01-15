@@ -89,6 +89,6 @@ main (int argc, char **argv)
 	  execute_command (command, profiling);
 	}*/
     }
-
+  free_stream(command_stream);
   return print_tree;// || !last_command ? 0 : command_status (last_command);
 }

@@ -50,65 +50,347 @@ make_command_stream (int (*get_next_byte) (void *),
     int paren_line, open_paren = 0, invalid = 0;
     while(a = get_next_byte(get_next_byte_argument))
     {
-        if (prevChar == '\n' && a == '#')
-		{
-			while (a != '\n' && a != EOF)
-			{
-				prevChar = a;
-				a = get_next_byte (get_next_byte_argument);
-			}
-		}
-        else if(a == '(')
-        {
-            open_paren++;
-            if(open_paren == 1)
-            {
-                paren_line = line_num;
-                saved_location = size;
-            }
-        }
-        else if(a == ')' && open_paren)
-        {
-            open_paren--;
-            if(open_paren < 0)
-            {
-                paren_line = line_num;
-                saved_location = size;
-                break;
-            }
-            saved_location = 0;
-        }
-        if(!check_char(a, 1))
-        {
-            invalid = 1;
-            saved_location = size;
-            break;
-        }
-        if(a == '\n')
-            line_num++;
         if(size == max_size - 2)
             everything = (char*) checked_grow_alloc(everything, &max_size);
         everything[size++] = a;
         prevChar = a;
     }
-    if(open_paren)
-    {
-        error = (command_t) checked_malloc(sizeof(reference));
-        error->type = ERROR_COMMAND;
-        error->status = line_num;
-    }
-    command_t* command_list = format_everything(everything, 0, size - 1);
+    stream.command_list = format_everything(everything, 0, size - 1);
     free(everything);
-    return command_list;
+    return stream;
 }    
 command_t
 read_command_stream (command_stream_t s)
 {
   /* FIXME: Replace this with your implementation too.  */
-  error (1, 0, "command reading not yet implemented");
   return 0;
 }
-
+void
+split_everything(char* array, int beg, int end)
+{
+    int index = beg, word_end = end, line_num = 1, reserved = 0;
+    int in_command = 0, command_start = beg, command_end = end, num_semi = 0, first_command = 0, cpd_sub = 0, found_char = 0, found_word = 0,
+        num_endl = 0, num_parens = 0, little_command = 0, invalid = 0, greater = 0, less = 0, compound_line = 0, done_size = 0;
+    int compound_count[9] = {0,0,0,0,0,0,0,0,0};
+    int locations[4] = {-1,-1,-1,-1};
+    int* done_check = NULL;
+    char prev_char = '\n', prev_rel_char = '\n', cur_char;
+    printf("Start\n");
+    while(index < end + 1)
+    {
+        //true
+        cur_char = array[index];
+        printf("%c\n", cur_char);
+        switch(cur_char)
+        {
+            case '\t':
+            case ' ': 
+                break;
+            case ';':
+                //and ; be
+                if(prev_rel_char == ';' || prev_rel_char == '|' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '(')
+                {
+                    invalid = 1;
+                    break;
+                }
+                num_semi++;
+                less = 0;
+                greater = 0;
+                found_char = 0;
+                if(little_command == 1)
+                {
+                    little_command = 0;
+                    command_end = index - 1;
+                }
+                break;
+            case '\n':
+                if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>')
+                {
+                    invalid = 1;
+                    break;
+                }
+                line_num++;
+                num_endl++;
+                found_char = 0;
+                if(little_command == 1)
+                {
+                    little_command = 0;
+                    command_end = index - 1;
+                }
+                less = 0;
+                greater = 0;
+                //found_end_line = index;
+                break;
+            case '|':
+                if(prev_rel_char == ';' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '|')
+                    invalid = 1;
+                less = 0;
+                greater = 0;
+                found_char = 0;
+                break;
+            case '(':
+                num_parens++;
+                if(prev_rel_char == '<' || prev_rel_char == '>' || (check_char(prev_rel_char, 2) && prev_rel_char != '\n' && prev_rel_char != '|'
+                    && prev_rel_char != ';' && prev_rel_char != '('))
+                {
+                    make_error(line_num);
+                    return;
+                }
+                if(!in_command)
+                {
+                    in_command = 1;
+                    command_start = index;
+                }
+                if(!little_command)
+                {
+                    little_command = 1;
+                    
+                }
+                break;
+            case ')':
+                if(!num_parens || prev_rel_char == '(' || prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>')
+                {
+                    make_error(line_num);
+                    return;
+                }
+                num_parens--;
+                break;
+            case '<':
+                if(prev_rel_char == ';' || prev_rel_char == '|' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '('
+                    || less || greater)
+                {
+                    invalid = 1;
+                }
+                less++;
+                break;
+            case '>':
+                if(prev_rel_char == ';' || prev_rel_char == '|' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '(' || greater)
+                {
+                    invalid = 1;
+                }
+                greater++;
+                break;
+            case '#':
+                if(prev_rel_char == '\n')
+                {
+                    while (array[index] != '\n' && index < end + 1)
+                    {
+                        index++;
+                    }
+                    index++;
+                    line_num++;
+                }
+                else
+                    invalid = 1;
+                break;
+            default:
+                if(!check_char(cur_char, 1)) //!check_char
+                {
+                    invalid = 1;
+                    break;
+                }
+                else
+                {
+                    if(!in_command)
+                    {
+                        in_command = 1;
+                        command_start = index;
+                    }
+                    if(first_command && check_char(cur_char, 2))
+                    {
+                        invalid = 1;
+                        break;
+                    }
+                    if(!little_command || compound_count[0])
+                    {
+                        little_command = 1;
+                        word_end = end;
+                        prev_char = read_word(array, &index, &word_end);
+                        reserved = check_reserved_word(array, index, word_end);
+                        
+                    int i;
+                    for(i = index; i < word_end + 1; i++)
+                    {
+                        printf("%c", array[i]);
+                    }
+                    printf("\nReserved: %d\n", reserved);
+                        if(reserved && !found_char)
+                        {
+                            if(!cpd_sub)
+                            {
+                                cpd_sub = reserved;
+                                locations[0] = index;
+                            }
+                            if(reserved == 1 || reserved == 5 || reserved == 8)
+                            {
+                                
+                            }
+                            else if(prev_rel_char != ';' && prev_rel_char != '\n' && prev_rel_char != '|' && prev_rel_char != '(')
+                            {
+                                invalid = 1;
+                                reserved = 0;
+                            }
+                            else if(!(reserved == 1 || reserved == 5 || reserved == 8) && (prev_rel_char == '|' || prev_rel_char == '(' || !found_word))
+                            {
+                                invalid = 1;
+                                reserved = 0;
+                            }
+                            printf("Invalid: %d\n", invalid);
+                            found_word = 0;
+                            switch(reserved)
+                            {
+                                case 0: //not_reserved
+                                    break;
+                                case 1: //if
+                                    compound_count[reserved]++;
+                                    compound_count[0]++;
+                                    break;
+                                case 5: //while
+                                case 8: //until
+                                    if(done_size < compound_count[5] + compound_count[8] + 1)
+                                    {
+                                        done_check = (int* ) realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
+                                        done_size++;
+                                    }
+                                    done_check[compound_count[5] + compound_count[8]] = reserved;
+                                    compound_count[reserved]++;
+                                    compound_count[0]++;
+                                    break;
+                                case 2: //then
+                                    if(!compound_count[1] )
+                                        invalid = 1;
+                                    if(cpd_sub == 1)
+                                    if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                        locations[1] = index;
+                                    compound_count[2]++;
+                                    break;
+                                case 3: //else
+                                    if(cpd_sub == 1)
+                                    if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                        locations[2] = index;
+                                    if(!compound_count[2])
+                                        invalid = 1;
+                                    compound_count[3]++;
+                                    break;
+                                case 6: //do
+                                    if(cpd_sub == 5 || cpd_sub == 8)
+                                    {
+                                        if((compound_count[5] == 1 && !compound_count[1] && !compound_count[8]) || (compound_count[8] == 1 && !compound_count[1] && !compound_count[5]))
+                                            locations[1] = index;
+                                    }
+                                    if(!compound_count[5] && !compound_count[8])
+                                        invalid = 1;
+                                    compound_count[6]++;
+                                    break;
+                                case 4: //fi
+                                    if(compound_count[1] && compound_count[2])
+                                    {
+                                    if(cpd_sub == 1)
+                                        if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                            locations[3] = index;
+                                        compound_count[1]--;
+                                        compound_count[2]--;
+                                        if(compound_count[3])
+                                            compound_count[3]--;
+                                        compound_count[0]--;
+                                    }
+                                    else
+                                        invalid = 1;
+                                    break;
+                                case 7: //done
+                                    if(compound_count[6])
+                                    {
+                                        if(compound_count[5] + compound_count[8] == 1)
+                                            if(!compound_count[1])
+                                                locations[2] = index;
+                                        compound_count[6]--;
+                                        if(compound_count[5])
+                                            compound_count[5]--;
+                                        else if(compound_count[8])
+                                            compound_count[8]--;
+                                        else
+                                            invalid = 1;
+                                        compound_count[0]--;
+                                    }
+                                    else
+                                        invalid = 1;
+                                    break;    
+                                default:
+                                    break;
+                            }
+                            if(!compound_count[0]) //if done with compounds
+                            {
+                                first_command = 1;
+                                free(done_check);
+                                done_check = NULL;
+                            }
+                            index = word_end;
+                        }
+                        else
+                        {
+                            
+                            found_word = 1;
+                            found_char = 1;
+                            index = word_end;
+                        }
+                    }
+                    num_endl = 0;
+                    num_semi = 0;
+                }
+                
+        }
+        if(num_semi > 1)
+        {   
+            invalid = 1;
+        }
+        if(invalid)
+        {
+            make_error(line_num);
+            return;
+        }
+        if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
+        {
+            int i;
+            in_command = 0;
+            if(num_parens)
+            {
+                make_error(line_num);
+                return;
+            }
+            for(i = command_start; i < command_end + 1; i++)
+            {
+                printf("%c", array[i]);
+            }
+            printf("\n");
+            //add to array: command_start, command_end
+        }
+        else if(num_endl > 2)
+        {
+            index++;
+            continue;
+        }
+        if(cur_char != ' ' && cur_char != '\t')
+            prev_rel_char = array[index];
+        if(index == end)
+        {
+            if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>' || num_parens || compound_count[0])
+            {
+                make_error(line_num);
+                return;
+            }
+        }
+        index++;
+    }
+    in_command = 0;
+    int i;
+    for(i = command_start; i < end + 1; i++)
+    {
+        printf("%c", array[i]);
+    }
+    printf(".\nEnd\n");
+    printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
+}
+/*
 command_t* 
 format_everything(char* array, int beg, int end)
 {
@@ -175,7 +457,7 @@ format_everything(char* array, int beg, int end)
         }
     }
 }
-
+*/
 command_t
 compound_cmd(char* array, int beg, int* end, int type)
 {
@@ -188,7 +470,7 @@ format_function (char* array, int beg, int end, command_t reserved)
     int index = beg, less = end + 1, greater = end + 1, flag = 0, word = 0;
     command_t ret;
     command reference;
-    while (index != end + 1)
+    while (index < end + 1)
     {
         if(reserved && !flag)
         {
@@ -219,7 +501,7 @@ format_function (char* array, int beg, int end, command_t reserved)
         else if(array[index] == '>')
         {
             if(greater < end + 1 || (!reserved && !word) || (reserved && less < end + 1 && !word))
-                return;
+                return NULL;
             greater = index;
             flag = 1;
             word = 0;
@@ -230,13 +512,13 @@ format_function (char* array, int beg, int end, command_t reserved)
                 beg++;
             else if(!reserved && (array[index] == '<' || array[index] == '>'))
             {
-                return;
+                return NULL;
             }
         }
         index++;
     }
     if(index == beg || !word)
-        return;
+        return NULL;
     if(reserved)
     {
         ret = reserved;
@@ -268,10 +550,10 @@ read_word(char* array, int* beg, int* end)
 	int endindex = *end;
 	int space = 1;
 	if (begindex == endindex)
-		return;
+		return array[begindex];
 	while(begindex != endindex + 1)
 	{
-		if(!isalpha(array[begindex]))
+		if(!check_char(array[begindex], 0))
 		{
 			if(isspace(array[begindex]))
 			{
@@ -285,7 +567,9 @@ read_word(char* array, int* beg, int* end)
 				else
 					break;
 			}
-			if(array[begindex] == ';' || array[begindex] == '|' || array[begindex] == '(' || array[begindex] == ')' || array[begindex] == '<' || array[begindex] == '>')
+			
+		}
+        else if(array[begindex] == ';' || array[begindex] == '|' || array[begindex] == '(' || array[begindex] == ')' || array[begindex] == '<' || array[begindex] == '>')
 			{
 				if(*beg == begindex)
 				{
@@ -293,7 +577,6 @@ read_word(char* array, int* beg, int* end)
 				}
 				break;
 			}
-		}
 		*end = begindex;
 		space = 2;
 		begindex++;

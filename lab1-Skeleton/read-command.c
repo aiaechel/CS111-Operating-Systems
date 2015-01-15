@@ -29,7 +29,7 @@
 
 /* FIXME: Define the type 'struct command_stream' here.  This should
    complete the incomplete type declaration in command.h.  */
-struct command_stream_t
+struct command_stream
 {
     command_t* command_list;
 };
@@ -49,7 +49,7 @@ make_command_stream (int (*get_next_byte) (void *),
   /* FIXME: Replace this with your implementation.  You may need to
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
-    command_stream_t ret;
+    command_stream_t ret = (command_stream_t) checked_malloc(sizeof(struct command_stream));
     char a, prevChar = '\n';
     size_t max_size = 1024, size = 0;
     char* everything = (char*) checked_malloc(max_size);
@@ -60,7 +60,7 @@ make_command_stream (int (*get_next_byte) (void *),
         everything[size++] = a;
         prevChar = a;
     }
-    ret.command_list = format_everything(everything, 0, size - 1);
+    ret->command_list = format_everything(everything, 0, size - 1);
     free(everything);
     return ret;
 }    
@@ -718,17 +718,19 @@ free_command(command_t c)
 }
 
 void
-free_stream(command_stream c)
+free_stream(command_stream_t c)
 {
     int i;
-    for(i = 0; c.command_list[i] != NULL; i++)
+    if(c != NULL)
+    for(i = 0; c->command_list[i] != NULL; i++)
     {
         free_command(c.command_list[i]);
     }
+    free(c);
 }
 
 void
 make_error (int linenum)
 {
-    printf("%d:There is a syntax error here.", linenum);
+    fprintf(stderr, "%d:There is a syntax error here.", linenum);
 }

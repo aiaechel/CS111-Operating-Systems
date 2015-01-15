@@ -53,16 +53,17 @@ make_command_stream (int (*get_next_byte) (void *),
     char a, prevChar = '\n';
     size_t max_size = 1024, size = 0;
     char* everything = (char*) checked_malloc(max_size);
-    while((a = get_next_byte(get_next_byte_argument)))
+    while((a = get_next_byte(get_next_byte_argument)) != EOF)
     {
         if(size == max_size - 2)
             everything = (char*) checked_grow_alloc(everything, &max_size);
         everything[size++] = a;
         prevChar = a;
+	//printf("%c:", a);
     }
     ret->command_list = split_everything(everything, 0, size - 1);
     free(everything);
-    return ret;
+    return NULL;
 }    
 command_t
 read_command_stream (command_stream_t s)
@@ -80,7 +81,7 @@ split_everything(char* array, int beg, int end)
     int locations[4] = {-1,-1,-1,-1};
     int* done_check = NULL;
     char prev_char = '\n', prev_rel_char = '\n', cur_char;
-    printf("Start\n");
+    printf("Start%d\n", locations[0]);
     while(index < end + 1)
     {
         //true
@@ -214,11 +215,11 @@ split_everything(char* array, int beg, int end)
                         reserved = check_reserved_word(array, index, word_end);
                         
                     int i;
-                    for(i = index; i < word_end + 1; i++)
+                    /*for(i = index; i < word_end + 1; i++)
                     {
                         printf("%c", array[i]);
                     }
-                    printf("\nReserved: %d\n", reserved);
+                    printf("\nReserved: %d\n", reserved);*/
                         if(reserved && !found_char)
                         {
                             if(!cpd_sub)
@@ -240,7 +241,7 @@ split_everything(char* array, int beg, int end)
                                 invalid = 1;
                                 reserved = 0;
                             }
-                            printf("Invalid: %d\n", invalid);
+                            //printf("Invalid: %d\n", invalid);
                             found_word = 0;
                             switch(reserved)
                             {
@@ -362,11 +363,11 @@ split_everything(char* array, int beg, int end)
                 make_error(line_num);
                 return NULL;
             }
-            for(i = command_start; i < command_end + 1; i++)
+            /*for(i = command_start; i < command_end + 1; i++)
             {
                 printf("%c", array[i]);
             }
-            printf("\n");
+            printf("\n");*/
             //add to array: command_start, command_end
         }
         else if(num_endl > 2)
@@ -388,12 +389,12 @@ split_everything(char* array, int beg, int end)
     }
     in_command = 0;
     int i;
-    for(i = command_start; i < end + 1; i++)
+    /*for(i = command_start; i < end + 1; i++)
     {
         printf("%c", array[i]);
     }
-    printf(".\nEnd\n");
-    printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
+    printf(".\nEnd\n");*/
+    // printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
     return NULL;
 }
 /*

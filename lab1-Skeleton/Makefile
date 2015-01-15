@@ -20,8 +20,8 @@
 # However, don't rest until it's warning-free!
 
 CC = gcc
-WERROR_CFLAGS = -Werror
-CFLAGS = -g -Wall -Wextra $(WERROR_CFLAGS)
+WERROR_CFLAGS =
+CFLAGS = -g -Wall -Wextra $(WERROR_CFLAGS) -ggdb -O0
 LAB = 1
 DISTDIR = lab1-$(USER)
 CHECK_DIST = ./check-dist

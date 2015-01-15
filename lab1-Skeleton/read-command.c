@@ -49,8 +49,6 @@ make_command_stream (int (*get_next_byte) (void *),
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
     command_stream_t ret;
-    command_t error = NULL;
-    command reference;
     char a, prevChar = '\n';
     size_t max_size = 1024, size = 0;
     char* everything = (char*) checked_malloc(max_size);
@@ -404,7 +402,6 @@ format_everything(char* array, int beg, int end)
     char splitter = 0;
     command_t* command_list;
     command_t comp_command, cur_command, container;
-    command reference;
     while(beg < end + 1)
     {
         word_beg = beg;
@@ -435,7 +432,7 @@ format_everything(char* array, int beg, int end)
         }
         if(splitter == '|' || splitter == '\n' || splitter == ';')
         {
-            container = (command_t) checked_malloc(sizeof(reference));
+            container = (command_t) checked_malloc(sizeof(struct command));
             container->u[0] = command_list[num_commands - 1];
             container->u[1] = cur_command;
             container->status = -1;
@@ -470,7 +467,6 @@ format_function (char* array, int beg, int end, command_t reserved)
 {
     int index = beg, less = end + 1, greater = end + 1, flag = 0, word = 0;
     command_t ret;
-    command reference;
     while (index < end + 1)
     {
         if(reserved && !flag)
@@ -526,7 +522,7 @@ format_function (char* array, int beg, int end, command_t reserved)
     }
     else
     {
-        ret = (command_t) checked_malloc(sizeof(reference));
+        ret = (command_t) checked_malloc(sizeof(struct command));
         ret->u.word = (char**) checked_malloc(sizeof(char*) * 2);
         ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1);
         ret->u.word[1] = NULL;
@@ -655,8 +651,9 @@ remove_whitespace(char* array, int beg, int end)
 void
 free_everything(command_t* list, int size)
 {
+    int i;
     if(list != NULL)
-        for(int i = 0; i < size; i++)
+        for(i = 0; i < size; i++)
         {
             if(list[i] != NULL)
                 free(list[i]);

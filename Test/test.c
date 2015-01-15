@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "command-internals.h"
 void
 format_function (char* array, int beg, int end, int* reserved)
 {
@@ -959,7 +960,10 @@ int main()
     int word_end = end;
     int a = 0;
     int i;
-    int* reserved = &a;
+    struct command snth;
+    printf("%d\n", sizeof(snth));
+    printf("%d\n", sizeof(struct command));
+    /*int* reserved = &a;
     //read_word(test, &start, &word_end);
     
     char b = read_word(test, &start, &word_end);

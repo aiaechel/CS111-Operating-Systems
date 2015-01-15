@@ -1029,10 +1029,32 @@ int compound_sub_check(char* array, int beg, int* end, int flag, int* locations)
     return 0;
 }
 */
-int
-check_sequence(char* array, int beg, int end)
+
+void find_semi_pipes(char* array, int beg, int end, int* semis, int* pipes)
 {
-    
+    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0;
+    int num_res[2] = {0, 0};
+    char a;
+    size_t num_semis = 0, num_pipes = 0, max_size = 10;
+    semis = (int*) /*checked_*/realloc(semis, max_size);
+    pipes = (int*) /*checked_*/realloc(pipes, max_size);
+    while(isspace(array[index]) || array[index] == ';')
+        index++;
+    while(isspace(array[end]) || array[end] == ';')
+        end--;
+    while(index < end + 1)
+    {
+        a = read_word(array, &index, &word_beg);
+        first_reserved = check_reserved_word(array, index, word_beg);
+        if(first_reserved)
+        {   
+            
+        }
+        else if(a == '(')
+        {
+            
+        }
+    }
 }
 
 int
@@ -1065,8 +1087,9 @@ check_char(int a, int flag)
 }
 int main()
 {
-    char test[] = "true\n\ng++ -c foo.c\n\n: : :\n\nif cat < /etc/passwd | tr a-z A-Z | sort -u; then :; else echo sort failed!; fi\n\na b<c > d\n\nif\n  if a;a;a; then b; else :; fi\nthen\n\n if c\n  then if d | e; then f; fi\n fi\nfi\n\ng<h\n\nwhile\n  while\n    until :; do echo yoo hoo!; done\n    false\n  do (a|b)\n  done >f\ndo\n  :>g\ndone\n\n# Another weird example: nobody would ever want to run this.\na<b>c|d<e>f|g<h>i";
-    printf("%s\n", test);
+    /*char test[] = "true\n\ng++ -c foo.c\n\n: : :\n\nif cat < /etc/passwd | tr a-z A-Z | sort -u; then :; else echo sort failed!; fi\n\na b<c > d\n\nif\n  if a;a;a; then b; else :; fi\nthen\n\n if c\n  then if d | e; then f; fi\n fi\nfi\n\ng<h\n\nwhile\n  while\n    until :; do echo yoo hoo!; done\n    false\n  do (a|b)\n  done >f\ndo\n  :>g\ndone\n\n# Another weird example: nobody would ever want to run this.\na<b>c|d<e>f|g<h>i";
+    printf("%s\n", test);*/
+    char lel[] = "(asenthua";
     int start = 0;
     int end = strlen(test) - 1;
     int word_end = end;
@@ -1076,8 +1099,9 @@ int main()
     //read_word(test, &start, &word_end);
     
     char b = read_word(test, &start, &word_end);
+    printf("Start: %d; End: %d\n", start, word_end);
     a = check_reserved_word(test, start, end);
-    split_everything(test, start, end);
+    //split_everything(test, start, end);
     //printf("Stopped at: %c.\n", (start == end ? test[end-start] : b));
     /*for(i = start; i < word_end + 1; i++)
     {

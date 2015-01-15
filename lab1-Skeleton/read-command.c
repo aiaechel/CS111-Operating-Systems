@@ -39,7 +39,7 @@ char* remove_whitespace(char* array, int beg, int end);
 int check_reserved_word(char* array, int beg, int end);
 char read_word(char* array, int* beg, int* end);
 command_t format_function (char* array, int beg, int end, command_t reserved);
-void split_everything(char* array, int beg, int end);
+command_stream_t split_everything(char* array, int beg, int end);
 void make_error (int linenum);
 
 command_stream_t
@@ -60,7 +60,7 @@ make_command_stream (int (*get_next_byte) (void *),
         everything[size++] = a;
         prevChar = a;
     }
-    ret->command_list = format_everything(everything, 0, size - 1);
+    ret->command_list = split_everything(everything, 0, size - 1);
     free(everything);
     return ret;
 }    
@@ -70,7 +70,7 @@ read_command_stream (command_stream_t s)
   /* FIXME: Replace this with your implementation too.  */
   return 0;
 }
-void
+command_stream_t
 split_everything(char* array, int beg, int end)
 {
     int index = beg, word_end = end, line_num = 1, reserved = 0;
@@ -139,7 +139,7 @@ split_everything(char* array, int beg, int end)
                     && prev_rel_char != ';' && prev_rel_char != '('))
                 {
                     make_error(line_num);
-                    return;
+                    return NULL;
                 }
                 if(!in_command)
                 {
@@ -156,7 +156,7 @@ split_everything(char* array, int beg, int end)
                 if(!num_parens || prev_rel_char == '(' || prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>')
                 {
                     make_error(line_num);
-                    return;
+                    return NULL;
                 }
                 num_parens--;
                 break;
@@ -351,7 +351,7 @@ split_everything(char* array, int beg, int end)
         if(invalid)
         {
             make_error(line_num);
-            return;
+            return NULL;
         }
         if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
         {
@@ -360,7 +360,7 @@ split_everything(char* array, int beg, int end)
             if(num_parens)
             {
                 make_error(line_num);
-                return;
+                return NULL;
             }
             for(i = command_start; i < command_end + 1; i++)
             {
@@ -381,7 +381,7 @@ split_everything(char* array, int beg, int end)
             if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>' || num_parens || compound_count[0])
             {
                 make_error(line_num);
-                return;
+                return NULL;
             }
         }
         index++;
@@ -394,6 +394,7 @@ split_everything(char* array, int beg, int end)
     }
     printf(".\nEnd\n");
     printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
+    return NULL;
 }
 /*
 command_t* 
@@ -724,7 +725,7 @@ free_stream(command_stream_t c)
     if(c != NULL)
     for(i = 0; c->command_list[i] != NULL; i++)
     {
-        free_command(c.command_list[i]);
+        free_command(c->command_list[i]);
     }
     free(c);
 }

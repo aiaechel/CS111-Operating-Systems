@@ -481,7 +481,7 @@ format_function (char* array, int beg, int end, command_t reserved)
                 continue;
             }
             else if(check_char(array[index], 0))
-                return;
+                return NULL;
         }
         if(!word)
         {
@@ -525,7 +525,7 @@ format_function (char* array, int beg, int end, command_t reserved)
     {
         ret = (command_t) checked_malloc(sizeof(struct command));
         ret->u.word = (char**) checked_malloc(sizeof(char*) * 2);
-        ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1);
+        ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1));
         ret->u.word[1] = NULL;
         ret->type = SIMPLE_COMMAND;
         ret->status = -1;

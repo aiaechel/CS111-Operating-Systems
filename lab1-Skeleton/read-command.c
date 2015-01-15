@@ -81,12 +81,12 @@ split_everything(char* array, int beg, int end)
     int locations[4] = {-1,-1,-1,-1};
     int* done_check = NULL;
     char prev_char = '\n', prev_rel_char = '\n', cur_char;
-    printf("Start%d\n", locations[0]);
+    //printf("Start%d\n", locations[0]);
     while(index < end + 1)
     {
         //true
         cur_char = array[index];
-        printf("%c\n", cur_char);
+        //printf("%c\n", cur_char);
         switch(cur_char)
         {
             case '\t':

@@ -3,14 +3,17 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "command-internals.h"
+/*
+    will put text from beg to < into word, from < to > or end into input, from > to end to output
+    if reserved not null, 
+*/
 void
 format_function (char* array, int beg, int end, int* reserved)
 {
     int index = beg, less = end + 1, greater = end + 1, flag = 0, word = 0;
-    while (index != end + 1)
+    while (index < end + 1)
     {
-        if(reserved && !flag)
+        /*if(reserved && !flag)
         {
             if(array[index] == '\n' || array[index] == ';')
                 return;
@@ -25,21 +28,21 @@ format_function (char* array, int beg, int end, int* reserved)
         }
         if(!word)
         {
-            if(isalnum(array[index]))
+            if(check_char(array[index], 2))
                 word = 1;
-        }
+        }*/
         if(array[index] == '<')
         {
-            if (greater < end + 1 || less < end + 1 || (!reserved && !word))
-                return;
+            /*if (greater < end + 1 || less < end + 1 || (!reserved && !word))
+                return;*/
             less = index;
             flag = 1;
             word = 0;
         }
         else if(array[index] == '>')
         {
-            if(greater < end + 1 || (!reserved && !word) || (reserved && less < end + 1 && !word))
-                return;
+            /*if(greater < end + 1 || (!reserved && !word) || (reserved && less < end + 1 && !word))
+                return;*/
             greater = index;
             flag = 1;
             word = 0;
@@ -48,25 +51,24 @@ format_function (char* array, int beg, int end, int* reserved)
         {
             if(isspace(array[index]))
                 beg++;
-            else if(!reserved && (array[index] == '<' || array[index] == '>'))
+            /*else if(!reserved && (array[index] == '<' || array[index] == '>'))
             {
                 return;
-            }
+            }*/
         }
         index++;
     }
-    if(index == beg || !word)
-        return;
+    /*if(index == beg || !word)
+        return;*/
 /*
     command_t ret;
-    command reference;
     if(reserved)
     {
         ret = reserved;
     }
     else
     {
-        ret = (command_t) checked_malloc(sizeof(reference));
+        ret = (command_t) checked_malloc(sizeof(struct command));
         ret->u.word = (char**) checked_malloc(sizeof(char*) * 2);
         ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1);
         ret->u.word[1] = NULL;
@@ -126,7 +128,7 @@ format_function (char* array, int beg, int end, int* reserved)
         return first;
     }
     second = format_function(array, index + 1, end, array[index]);
-    container = (command_t) checked_malloc(sizeof(reference));
+    container = (command_t) checked_malloc(sizeof(struct command));
     container->status = -1;
     container->type = (type == '|' ? PIPE_COMMAND : SEQUENCE_COMMAND);
     container->u.command[0] = first;
@@ -267,24 +269,65 @@ remove_whitespace(char* array, int beg, int end)
 
 
 void
-complete_command(char* array, int beg, int* end)
+complete_command(char* array, int beg, int end, int* semi_locations, int* pipe_locations)
 {
-    //0: not a reserved word
-	//1: if (size 2)
-	//2: then (size 4)
-	//3: else (size 4)
-	//4: fi (size 2)
-	//5: while (size 5)
-	//6: do (size 2)
-	//7: done (size 4)
-	//8: until (size 5)
     
-    
-    
+    //semi_locations is array of locations of semicolons, last number in array is -1, if it exists
+    //pipe_locations is array of locations of pipes, last number in array is -1, if it exists
+    int i = 0, first = 2, loc1, loc2;
+    //command_t container = NULL, c0, c1, current;
+    if(semi_locations == NULL)
+        return /*pipe_command(array, beg, end, pipe_locations*/;
+    while(semi_locations[i] != -1)
+    {
+        loc1 = semi_locations[i];
+        loc2 = (semi_locations[i + 1] == -1 ? end : semi_locations[i + 1]) ;
+        
+        while(isspace(array[loc1]) || array[loc1] == ';')
+            loc1++;
+        while(isspace(array[loc2]) || array[loc2] == ';')
+            loc2--;
+        if(first)
+        {
+            //current = pipe_command(array, loc1, loc2, pipe_locations);
+            if(first == 2)
+            {
+                //c0 = current;
+            }
+            else if(first == 1)
+            {
+            /*
+                if(first == 1)
+                {
+                    c1 = current;
+                    container = (command_t) checked_malloc(sizeof(struct command));
+                    container->type = SEQUENCE_COMMAND;
+                    container->status = -1;
+                    container->u.data[0] = c0;
+                    container->u.data[1] = c1;
+                }
+                first--;
+            */
+            }
+        }
+        else
+        {
+        /*
+            c0 = container;
+            container = (command_t) checked_malloc(sizeof(struct command));
+            container->type = PIPE_COMMAND;
+            container->status = -1;
+            container->u.data[0] = c0;
+            container->u.data[1] = current;
+        */
+        }
+        
+    }
+    //return container;
     /*int word_beg = beg, word_end = *end, reserve_check, break_flag = 0;
     int first_index = 0, cur_index = *end, last_semi = *end + 1;
     int i;
-    //char splitter = read_word(array, &word_beg, &word_end);
+    char splitter = read_word(array, &word_beg, &word_end);
     char prev_splitter = 0;
     while(word_beg < (*end) + 1)
     {
@@ -351,12 +394,18 @@ complete_command(char* array, int beg, int* end)
     }*/
 }
 
+/*
+    I haven't updated the this function yet.
+    pipe_locations is location of pipes in array from beg to end
+    basically send the stuff between the pipes to format_command, if there are any
+    if there are none, send everything to format_command
+*/
 void
-pipe_command(char* array, int beg, int end, int* locations, int num_locations)
+pipe_command(char* array, int beg, int end, int* pipe_locations)
 {
     int i, index = beg, first = 2;
     //command_t container, current, c0, c1;
-    if(locations == NULL)
+    if(pipe_locations == NULL)
     {
         //return format_command(array, beg, end);
         for(i = beg; i < end + 1; i++)
@@ -364,11 +413,14 @@ pipe_command(char* array, int beg, int end, int* locations, int num_locations)
         printf("\n");
         return;
     }
-    for(i = 0; i < num_locations; i++)
-    {
+    loc1 = pipe_locations[i];
+    loc2 = (pipe_locations[i + 1] == -1 ? end : pipe_locations[i + 1]) ;   
+    while(isspace(array[loc1]) || array[loc1] == '|')
+        loc1++;
+    while(isspace(array[loc2]) || array[loc2] == '|')
+        loc2--;
     /*
-        current = format_command(array, index, location[i] - 1);
-        index = location[i] + 1;
+        current = format_command(array, loc1, loc2);
     
         if(first)
         {
@@ -379,28 +431,60 @@ pipe_command(char* array, int beg, int end, int* locations, int num_locations)
             if(first == 1)
             {
                 c1 = current;
-                container->u.data[0] = c1;
-                container->u.data[1] = c2;
+                container = (command_t) checked_malloc(sizeof(struct command));
+                container->type = PIPE_COMMAND;
+                container->status = -1;
+                container->u.data[0] = c0;
+                container->u.data[1] = c1;
             }
             first--;
         }
         else
         {
             c0 = container;
-            container = (command_t) checked_malloc(sizeof(reference));
+            container = (command_t) checked_malloc(sizeof(struct command));
             container->type = PIPE_COMMAND;
             container->status = -1;
             container->u.data[0] = c0;
             container->u.data[1] = current;
         }
     */
-    }
+    
     //return container;
 }
 
+/*
+    if there is a subshell or a compound command, send that part to respective function
+    then send stuff to format_command. 
+    haven't implemented most of this yet
+    if there is a subshell or compound command, format_function gets those and all the text
+        that comes after the subshell/compound command.
+    for subshell, find ( and ) and send the stuff between to subshell
+    haven't decided what to do for compound command, since no compound_command function yet
+*/
 void 
 format_command(char* array, int beg, int end)
 {
+    int word_beg = beg, word_end = end, reserve;
+    char splitter;
+    while(array[beg] == ' ' || array[beg] == '\t')
+        word_beg++;
+    splitter = read_word(array, &word_beg, &word_end);
+    reserve = check_reserved_word(array, word_beg, word_end);
+    /*if(reserve)
+    {
+        sub_command = compound_cmd();
+    }
+    else if(splitter == '(')
+    {
+        word_end = end;
+        while(array[word_end] != ')')
+            word_end--;
+        word_end--;
+        sub_command = subshell(array, word_beg + 1, &word_end);
+    }*/
+    container = format_function(array, word_end + 1, end, sub_command);
+    return container;
     /*int word_beg = beg, word_end = end, reserve;
     char splitter;
     command_t sub_command = NULL, container;
@@ -425,15 +509,15 @@ format_command(char* array, int beg, int end)
 */
 }
 
+//basically sends everything between parentheses to 
 void 
 subshell(char* array, int beg, int* end)
 {
     
     /*
     command_t inside, container;
-    command reference;
     inside = complete_command(array, beg, end);
-    container = (command_t) checked_malloc(sizeof(reference));
+    container = (command_t) checked_malloc(sizeof(struct command));
     container->type = SUBSHELL_COMMAND;
     container->status = -1;
     container->u.command[0] = inside;
@@ -489,14 +573,13 @@ split_everything(char* array, int beg, int end)
         num_endl = 0, num_parens = 0, little_command = 0, invalid = 0, greater = 0, less = 0, compound_line = 0, done_size = 0;
     int compound_count[9] = {0,0,0,0,0,0,0,0,0};
     int locations[4] = {-1,-1,-1,-1};
+    int* semi_locations;
     int* done_check = NULL;
     char prev_char = '\n', prev_rel_char = '\n', cur_char;
-    printf("Start\n");
     while(index < end + 1)
     {
         //true
         cur_char = array[index];
-        printf("%c\n", cur_char);
         switch(cur_char)
         {
             case '\t':
@@ -806,6 +889,13 @@ split_everything(char* array, int beg, int end)
     printf(".\nEnd\n");
     printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
 }
+struct compound_cmd
+{
+    int type;
+    int locations[4];
+    struct compound_cmd* inner;
+};
+typedef struct compound_cmd *compound_command_t;
 /*
 int compound_sub_check(char* array, int beg, int* end, int flag, int* locations)
 {
@@ -954,16 +1044,13 @@ check_char(int a, int flag)
 }
 int main()
 {
-    char* test = "if if a; then b; fi; then c; else d; fi";
+    char* test = "a\n\nb\n\nc";
     int start = 0;
     int end = strlen(test) - 1;
     int word_end = end;
     int a = 0;
     int i;
-    struct command snth;
-    printf("%d\n", sizeof(snth));
-    printf("%d\n", sizeof(struct command));
-    /*int* reserved = &a;
+    int* reserved = &a;
     //read_word(test, &start, &word_end);
     
     char b = read_word(test, &start, &word_end);

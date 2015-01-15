@@ -42,6 +42,7 @@ command_t format_function (char* array, int beg, int end, command_t reserved);
 command_stream_t split_everything(char* array, int beg, int end);
 void make_error (int linenum);
 
+//reads all chars in stream, sends everything to 
 command_stream_t
 make_command_stream (int (*get_next_byte) (void *),
 		     void *get_next_byte_argument)
@@ -71,17 +72,19 @@ read_command_stream (command_stream_t s)
   /* FIXME: Replace this with your implementation too.  */
   return 0;
 }
+
 command_stream_t
 split_everything(char* array, int beg, int end)
 {
     int index = beg, word_end = end, line_num = 1, reserved = 0;
     int in_command = 0, command_start = beg, command_end = end, num_semi = 0, first_command = 0, cpd_sub = 0, found_char = 0, found_word = 0,
-        num_endl = 0, num_parens = 0, little_command = 0, invalid = 0, greater = 0, less = 0, compound_line = 0, done_size = 0;
+        num_endl = 0, num_parens = 0, little_command = 0, invalid = 0, greater = 0, less = 0, compound_line = 0, done_size = 0, command_count = 0;
     int compound_count[9] = {0,0,0,0,0,0,0,0,0};
     int locations[4] = {-1,-1,-1,-1};
     int* done_check = NULL;
     char prev_char = '\n', prev_rel_char = '\n', cur_char;
-    //printf("Start%d\n", locations[0]);
+    command_stream_t ret = (command_stream_t) checked_malloc(sizeof(struct command_stream));
+    
     while(index < end + 1)
     {
         //true
@@ -354,7 +357,7 @@ split_everything(char* array, int beg, int end)
             make_error(line_num);
             return NULL;
         }
-        if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
+        if(num_endl == 2 && cur_char != ' ' && cur_char != '\t' && !sub_cmd)
         {
             int i;
             in_command = 0;
@@ -395,75 +398,8 @@ split_everything(char* array, int beg, int end)
     }
     printf(".\nEnd\n");*/
     // printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
-    return NULL;
+    
 }
-/*
-command_t* 
-format_everything(char* array, int beg, int end)
-{
-    int word_beg, word_end, reserved = 0, num_commands = 0, valid_command = 0, int compound_end = end;
-    char splitter = 0;
-    command_t* command_list;
-    command_t comp_command, cur_command, container;
-    while(beg < end + 1)
-    {
-        word_beg = beg;
-        word_end = end;
-        read_word(array, &word_beg, &word_end);
-        reserved = check_reserved_word(array, word_beg, word_end);
-        if(reserved)
-        {
-            comp_command = compound_cmd(array, word_beg, &word_end, reserved);
-            if(comp_command == NULL)
-            {
-                //some error here
-            }
-            compound_end = word_end;
-            valid_command = 1;
-        }
-        while(word_end < end + 1 && array[word_end] != '|' && array[word_end] != ';' && array[word_end] != '\n')
-        {
-            word_end++;
-        }
-        if(valid_command)
-        {
-            cur_command = format_function(array, word_beg, word_end - 1, '|', comp_command, compound_end + 1);
-        }
-        else
-        {
-            cur_command = format_function(array, word_beg, word_end - 1);
-        }
-        if(splitter == '|' || splitter == '\n' || splitter == ';')
-        {
-            container = (command_t) checked_malloc(sizeof(struct command));
-            container->u[0] = command_list[num_commands - 1];
-            container->u[1] = cur_command;
-            container->status = -1;
-            container->type = splitter == '|' ? PIPE_COMMAND : SEQUENCE_COMMAND;
-            command_list[num_commands] = container;
-        }
-        else
-        {
-            command_list = (command_t*) checked_realloc(command_list, sizeof(command_t) * (num_commands + 1));
-            command_list[num_commands++] = cur_command;
-        }
-        splitter = array[word_end];
-        beg = word_end + 1;
-        if(splitter == ';' || splitter == '\n')
-        {
-            if(beg < end + 1 && array[beg] == '\n')
-            {
-                valid_command = 0;
-                compound_end = end;
-                compound_command = NULL;
-                cur_command = NULL;
-                container = NULL;
-                splitter = 0;
-            }
-        }
-    }
-}
-*/
 
 command_t
 format_function (char* array, int beg, int end, command_t reserved)

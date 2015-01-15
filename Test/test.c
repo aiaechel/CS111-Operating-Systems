@@ -86,7 +86,7 @@ format_function (char* array, int beg, int end, int* reserved)
     return ret;
     
 */
-    int i;
+   /* int i;
     printf("The whole thing is: ");
     for(i = beg; i < end + 1; i++)
     {
@@ -97,7 +97,7 @@ format_function (char* array, int beg, int end, int* reserved)
     printf("main: ");
     for(i = beg; i < less && i < greater; i++)
     {
-            printf("%c", array[i]);
+        printf("%c", array[i]);
     }
     printf("|\n"); }
     if(less < end + 1)
@@ -119,21 +119,7 @@ format_function (char* array, int beg, int end, int* reserved)
         }
         printf("|\n");
         //first->output = remove_whitespace(array, greater + 1, index - 1);
-    }
-    //first->status = -1;
-    //first->type = SIMPLE_COMMAND;
-    //Andrew
-    /*if(index == end + 1)
-    {
-        return first;
-    }
-    second = format_function(array, index + 1, end, array[index]);
-    container = (command_t) checked_malloc(sizeof(struct command));
-    container->status = -1;
-    container->type = (type == '|' ? PIPE_COMMAND : SEQUENCE_COMMAND);
-    container->u.command[0] = first;
-    container->u.command[1] = second;
-    return container;*/
+    }*/
 }
 
 char
@@ -160,6 +146,8 @@ read_word(char* array, int* beg, int* end)
 				else
 					break;
 			}
+            else
+                return 0;
 			
 		}
         else if(array[begindex] == ';' || array[begindex] == '|' || array[begindex] == '(' || array[begindex] == ')' || array[begindex] == '<' || array[begindex] == '>')
@@ -277,7 +265,7 @@ complete_command(char* array, int beg, int end, int* semi_locations, int* pipe_l
     int i = 0, first = 2, loc1, loc2;
     //command_t container = NULL, c0, c1, current;
     if(semi_locations == NULL)
-        return /*pipe_command(array, beg, end, pipe_locations*/;
+        return /*pipe_command(array, beg, end, pipe_locations);*/;
     while(semi_locations[i] != -1)
     {
         loc1 = semi_locations[i];
@@ -403,7 +391,7 @@ complete_command(char* array, int beg, int end, int* semi_locations, int* pipe_l
 void
 pipe_command(char* array, int beg, int end, int* pipe_locations)
 {
-    int i, index = beg, first = 2;
+    int i, index = beg, first = 2, loc1, loc2;
     //command_t container, current, c0, c1;
     if(pipe_locations == NULL)
     {
@@ -483,13 +471,12 @@ format_command(char* array, int beg, int end)
         word_end--;
         sub_command = subshell(array, word_beg + 1, &word_end);
     }*/
-    container = format_function(array, word_end + 1, end, sub_command);
-    return container;
+    //container = format_function(array, word_end + 1, end, sub_command);
+    //return container;
+    //---------------------------------------------------------------------
     /*int word_beg = beg, word_end = end, reserve;
     char splitter;
     command_t sub_command = NULL, container;
-    while(array[beg] == ' ' || array[beg] == '\t')
-        word_beg++;
     splitter = read_word(array, &word_beg, &word_end);
     reserve = check_reserved_word(array, word_beg, word_end);
     if(reserve)
@@ -580,13 +567,13 @@ split_everything(char* array, int beg, int end)
     {
         //true
         cur_char = array[index];
+        //printf("%c.\n", cur_char);
         switch(cur_char)
         {
             case '\t':
             case ' ': 
                 break;
             case ';':
-                //and ; be
                 if(prev_rel_char == ';' || prev_rel_char == '|' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '(')
                 {
                     invalid = 1;
@@ -603,9 +590,15 @@ split_everything(char* array, int beg, int end)
                 }
                 break;
             case '\n':
-                if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>')
+                if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>') //account for a | \n b please
                 {
                     invalid = 1;
+                    break;
+                }
+                if(cpd_sub && num_endl == 1)
+                {
+                    array[index] = ' ';
+                    line_num++;
                     break;
                 }
                 line_num++;
@@ -622,7 +615,10 @@ split_everything(char* array, int beg, int end)
                 break;
             case '|':
                 if(prev_rel_char == ';' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '|')
+                {
                     invalid = 1;
+                    break;
+                }
                 less = 0;
                 greater = 0;
                 found_char = 0;
@@ -643,8 +639,9 @@ split_everything(char* array, int beg, int end)
                 if(!little_command)
                 {
                     little_command = 1;
-                    
                 }
+                num_semi = 0;
+                num_endl = 0;
                 break;
             case ')':
                 if(!num_parens || prev_rel_char == '(' || prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>')
@@ -653,6 +650,9 @@ split_everything(char* array, int beg, int end)
                     return;
                 }
                 num_parens--;
+                num_semi = 0;
+                num_endl = 0;
+                found_char = 0;
                 break;
             case '<':
                 if(prev_rel_char == ';' || prev_rel_char == '|' || prev_rel_char == '\n' || prev_rel_char == '<' || prev_rel_char == '>' || prev_rel_char == '('
@@ -660,6 +660,7 @@ split_everything(char* array, int beg, int end)
                 {
                     invalid = 1;
                 }
+                first_command = 0;
                 less++;
                 break;
             case '>':
@@ -667,6 +668,7 @@ split_everything(char* array, int beg, int end)
                 {
                     invalid = 1;
                 }
+                first_command = 0;
                 greater++;
                 break;
             case '#':
@@ -677,7 +679,9 @@ split_everything(char* array, int beg, int end)
                         index++;
                     }
                     index++;
-                    line_num++;
+                    if(index != end + 1)
+                        line_num++;
+                    command_start = index;
                 }
                 else
                     invalid = 1;
@@ -705,36 +709,42 @@ split_everything(char* array, int beg, int end)
                         little_command = 1;
                         word_end = end;
                         prev_char = read_word(array, &index, &word_end);
+                        if(!read_word)
+                        {
+                            invalid = 1;
+                            break;
+                        }
                         reserved = check_reserved_word(array, index, word_end);
                         
                     int i;
-                    for(i = index; i < word_end + 1; i++)
+                    /*for(i = index; i < word_end + 1; i++)
                     {
                         printf("%c", array[i]);
                     }
-                    printf("\nReserved: %d\n", reserved);
+                    printf("\nReserved: %d\n", reserved);*/
                         if(reserved && !found_char)
                         {
                             if(!cpd_sub)
                             {
                                 cpd_sub = reserved;
+                                found_char = 0;
                                 locations[0] = index;
                             }
+                            
                             if(reserved == 1 || reserved == 5 || reserved == 8)
                             {
-                                
+                                if(prev_rel_char != ';' && prev_rel_char != '\n' && prev_rel_char != '|' && prev_rel_char != '(')
+                                    {
+                                        invalid = 1;
+                                        reserved = 0;
+                                    }
                             }
-                            else if(prev_rel_char != ';' && prev_rel_char != '\n' && prev_rel_char != '|' && prev_rel_char != '(')
+                            else if(prev_rel_char != ';' && prev_rel_char != '\n')
                             {
                                 invalid = 1;
                                 reserved = 0;
                             }
-                            else if(!(reserved == 1 || reserved == 5 || reserved == 8) && (prev_rel_char == '|' || prev_rel_char == '(' || !found_word))
-                            {
-                                invalid = 1;
-                                reserved = 0;
-                            }
-                            printf("Invalid: %d\n", invalid);
+                            //printf("Invalid: %d\n", invalid);
                             found_word = 0;
                             switch(reserved)
                             {
@@ -748,7 +758,7 @@ split_everything(char* array, int beg, int end)
                                 case 8: //until
                                     if(done_size < compound_count[5] + compound_count[8] + 1)
                                     {
-                                        done_check = (int* ) realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
+                                        done_check = (int* ) /*checked_*/realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
                                         done_size++;
                                     }
                                     done_check[compound_count[5] + compound_count[8]] = reserved;
@@ -799,16 +809,13 @@ split_everything(char* array, int beg, int end)
                                 case 7: //done
                                     if(compound_count[6])
                                     {
+                                        if(!compound_count[6] && (!compound_count[5] || !compound_count[8]))
+                                            invalid = 1;
                                         if(compound_count[5] + compound_count[8] == 1)
                                             if(!compound_count[1])
                                                 locations[2] = index;
                                         compound_count[6]--;
-                                        if(compound_count[5])
-                                            compound_count[5]--;
-                                        else if(compound_count[8])
-                                            compound_count[8]--;
-                                        else
-                                            invalid = 1;
+                                        compound_count[done_check[compound_count[5] + compound_count[8]]]--;
                                         compound_count[0]--;
                                     }
                                     else
@@ -822,12 +829,12 @@ split_everything(char* array, int beg, int end)
                                 first_command = 1;
                                 free(done_check);
                                 done_check = NULL;
+                                done_size = 0;
                             }
                             index = word_end;
                         }
                         else
                         {
-                            
                             found_word = 1;
                             found_char = 1;
                             index = word_end;
@@ -856,11 +863,11 @@ split_everything(char* array, int beg, int end)
                 make_error(line_num);
                 return;
             }
-            for(i = command_start; i < command_end + 1; i++)
+            /*for(i = command_start; i < command_end + 1; i++)
             {
                 printf("%c", array[i]);
             }
-            printf("\n");
+            printf("\n");*/
             //add to array: command_start, command_end
         }
         else if(num_endl > 2)
@@ -887,7 +894,7 @@ split_everything(char* array, int beg, int end)
         printf("%c", array[i]);
     }
     printf(".\nEnd\n");
-    printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
+    //printf("Locations: %d %d %d %d", locations[0], locations[1], locations[2], locations[3]);
 }
 struct compound_cmd
 {
@@ -1044,7 +1051,7 @@ check_char(int a, int flag)
 }
 int main()
 {
-    char* test = "a\n\nb\n\nc";
+    char test[] = "\n\n\n   \n`";
     int start = 0;
     int end = strlen(test) - 1;
     int word_end = end;

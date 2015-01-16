@@ -153,7 +153,7 @@ cat >test.exp <<'EOF'
     g<h>i
 EOF
 
-../profsh -t test.sh >test.out 2>test.err
+../profsh -t test.sh >test.out 2>test.err || exit
 
 diff -u test.exp test.out || exit
 test ! -s test.err || {

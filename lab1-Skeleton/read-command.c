@@ -59,7 +59,7 @@ make_command_stream (int (*get_next_byte) (void *),
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
     command_stream_t ret = (command_stream_t) checked_malloc(sizeof(struct command_stream));
-    char a, prevChar = '\n';
+    char a;
     size_t max_size = 1024, size = 0;
     char* everything = (char*) checked_malloc(max_size);
     while((a = get_next_byte(get_next_byte_argument)) != EOF)
@@ -67,7 +67,6 @@ make_command_stream (int (*get_next_byte) (void *),
         if(size == max_size - 2)
             everything = (char*) checked_grow_alloc(everything, &max_size);
         everything[size++] = a;
-        prevChar = a;
 	//printf("%c:", a);
     }
     ret->command_list = split_everything(everything, 0, size - 1);
@@ -774,6 +773,7 @@ format_command(char* array, int beg, int end)
             default:
                 break;
         }
+	word_beg = word_end;
 		/*if(reserve == 1)
 		{
 			if_num = 1;
@@ -829,7 +829,7 @@ format_command(char* array, int beg, int end)
         while(array[word_end] != ')')
             word_end--;
         word_end--;
-        sub_command = complete_command(array, word_beg, word_end);
+        sub_command = complete_command(array, word_beg + 1, word_end);
         container = (command_t) checked_malloc(sizeof(struct command));
         container->type = SUBSHELL_COMMAND;
         container->status = -1;
@@ -837,8 +837,9 @@ format_command(char* array, int beg, int end)
         sub_command = container;
         container = NULL;
         word_end += 2;
+	word_beg = word_end;
     }
-    container = format_function(array, word_end, end, sub_command);
+    container = format_function(array, word_beg, end, sub_command);
     return container;
 }
 
@@ -956,8 +957,8 @@ remove_whitespace(char* array, int beg, int end)
 void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline)
 {
     int index = beg, word_end = end, reserved = 0;
-    int first_command = 0, cpd_sub = 0, found_char = 0,
-        num_parens = 0, little_command = 0, last_reserved = 0, done_size = 0;
+    int cpd_sub = 0, found_char = 0,
+        num_parens = 0, little_command = 0, done_size = 0;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
     int compound_count[9] = {0,0,0,0,0,0,0,0,0};
     int* semis = NULL;
@@ -977,7 +978,7 @@ void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, i
         locations[3] = -1;
     }
     int* done_check = NULL;
-    char prev_char = '\n', prev_rel_char = '\n', cur_char;
+    char prev_rel_char = '\n', cur_char;
     
     while(index < end + 1)
     {
@@ -1051,7 +1052,7 @@ void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, i
                 {
                     little_command = 1;
                     word_end = end;
-                    prev_char = read_word(array, &index, &word_end);
+                    read_word(array, &index, &word_end);
                     reserved = check_reserved_word(array, index, word_end);
                     if(reserved && !found_char)
                     {
@@ -1063,8 +1064,7 @@ void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, i
                                 locations[0] = index;   
                         }
                             //printf("Invalid: %d\n", invalid);
-                        last_reserved = reserved;
-                        switch(reserved)
+                         switch(reserved)
                         {                         
                             case 0: //not_reserved
                                 break;
@@ -1111,8 +1111,7 @@ void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, i
                                 compound_count[2]--;
                                 if(compound_count[3])
                                     compound_count[3]--;
-                                compound_count[0]--;
-                                first_command = 1;
+                                compound_count[0]--;                     
                                 break;
                             case 7: //done
                                 //printf("Compound6: %d", compound_count[6]);
@@ -1124,7 +1123,6 @@ void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, i
                                     compound_count[6]--;
                                     compound_count[done_check[compound_count[5] + compound_count[8] - 1]]--;
                                     compound_count[0]--;
-                                    first_command = 1;
                                 }
                             default:
                                 break;
@@ -1205,17 +1203,27 @@ free_command(command_t c)
     case SIMPLE_COMMAND:
         free(c->u.word[0]);
         free(c->u.word);
+	if(c->input != NULL)
+	  free(c->input);
+	if(c->output != NULL)
+	  free(c->output);
         break;
     case IF_COMMAND:
         free_command(c->u.command[2]);
     case UNTIL_COMMAND:
     case WHILE_COMMAND:
-    case SEQUENCE_COMMAND:
     case PIPE_COMMAND:
         free_command(c->u.command[1]);
     case SUBSHELL_COMMAND:
         free_command(c->u.command[0]);
+	if(c->input != NULL)
+	  free(c->input);
+	if(c->output != NULL)
+	  free(c->output);
         break;
+    case SEQUENCE_COMMAND:
+      free_command(c->u.command[0]);
+      free_command(c->u.command[1]);
     default:
         break;
     }

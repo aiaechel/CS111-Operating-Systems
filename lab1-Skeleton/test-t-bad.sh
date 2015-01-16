@@ -83,7 +83,7 @@ do
   }
   n=$((n+1))
 done
-echo "done"
+
 exit $status
 ) || exit
 

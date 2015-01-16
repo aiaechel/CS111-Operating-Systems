@@ -167,26 +167,6 @@ read_word(char* array, int* beg, int* end)
 	return array[begindex];
 }
 
-/*void
-compound_cmd(char* array, int beg, int* end, int type)
-{
-    //beg is right after the first word
-    int word_beg = beg, word_end = *end;
-    int reserved = 0;
-    char stop = read_word(array, &word_beg, &word_end);
-    reserved = check_reserved_word(array, word_beg, word_end);
-    while(1)
-    {
-        if(reserved)
-        {
-            int sub_end = *end;
-            compound_cmd
-        }
-        stop = read_word(array, &word_beg, &word_end);
-    }
-}
-*/
-
 int
 check_reserved_word(char* array, int beg, int end)
 {
@@ -294,6 +274,7 @@ complete_command(char* array, int beg, int end, int* semi_locations, int* pipe_l
                     container->u.data[0] = c0;
                     container->u.data[1] = c1;
                 }
+            }
                 first--;
             */
             }
@@ -1030,30 +1011,105 @@ int compound_sub_check(char* array, int beg, int* end, int flag, int* locations)
 }
 */
 
-void find_semi_pipes(char* array, int beg, int end, int* semis, int* pipes)
+void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline)
 {
-    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0;
-    int num_res[2] = {0, 0};
+    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0, num_parens = 0, found_char = 0;
+    int num_res = 0;
     char a;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
-    semis = (int*) /*checked_*/realloc(semis, max_size);
-    pipes = (int*) /*checked_*/realloc(pipes, max_size);
-    while(isspace(array[index]) || array[index] == ';')
+    int* semis = (int*) /*checked_*/malloc(sizeof(int)*max_size);
+    int* pipes = (int*) /*checked_*/malloc(sizeof(int)*max_size);
+    while(isspace(array[index]))
         index++;
     while(isspace(array[end]) || array[end] == ';')
         end--;
     while(index < end + 1)
     {
-        a = read_word(array, &index, &word_beg);
-        first_reserved = check_reserved_word(array, index, word_beg);
-        if(first_reserved)
+        a = read_word(array, &index, &word_end);
+        sub_cmd = check_reserved_word(array, index, word_end);
+        if(sub_cmd)
         {   
-            
+            if(!first_reserved)
+                first_reserved = sub_cmd;
+            switch(sub_cmd)
+            {
+                case 1: //if
+                case 5: //while
+                case 8: //until
+                    if(sub_cmd == first_reserved || (first_reserved*sub_cmd == 40))
+                        num_res++;
+                    break;
+                case 4: //fi
+                    if(first_reserved == 1)
+                        num_res--;
+                    break;
+                case 7: //done
+                    if(first_reserved == 5 || first_reserved == 8)
+                        num_res--;
+                    break;
+                default:
+                    break;
+            }
+            if(!num_res)
+            {
+                sub_cmd = 0;
+                first_reserved = 0;
+            }
+            index = word_end;
         }
         else if(a == '(')
         {
-            
+            num_parens++;
+            index++;
+            while(index < end + 1)
+            {
+                if(array[index] == ')')
+                    num_parens--;
+                else if(array[index] == '(')
+                    num_parens++;
+                if(!num_parens)
+                    break;
+                index++;
+            }
         }
+        else
+        {
+            index = word_end;
+            while(index < end + 1 && array[index] != ';' && array[index] != '\n' && array[index] != '|')
+                index++;
+            if(first_reserved)
+            {
+            }
+            else if(index == end + 1)
+            {
+                semis[num_semis] = -1;
+                pipes[num_pipes] = -1;
+                *semicolon = semis;
+                *pipeline = pipes;
+                return;
+            }
+            else if(array[index] == ';' || array[index] == '\n')
+            {
+                if(num_semis == max_size)
+                {
+                    max_size *= 2;
+                    semis = (int*) realloc(semis, sizeof(int)*max_size);
+                    pipes = (int*) realloc(semis, sizeof(int)*max_size);
+                }
+                semis[num_semis++] = index;
+            }
+            else if(array[index] == '|')
+            {
+                if(num_pipes == max_size)
+                {
+                    max_size *= 2;
+                    semis = (int*) realloc(semis, sizeof(int)*max_size);
+                    pipes = (int*) realloc(semis, sizeof(int)*max_size);
+                }
+                pipes[num_pipes++] = index;
+            }
+        }
+        index++;
     }
 }
 
@@ -1089,18 +1145,39 @@ int main()
 {
     /*char test[] = "true\n\ng++ -c foo.c\n\n: : :\n\nif cat < /etc/passwd | tr a-z A-Z | sort -u; then :; else echo sort failed!; fi\n\na b<c > d\n\nif\n  if a;a;a; then b; else :; fi\nthen\n\n if c\n  then if d | e; then f; fi\n fi\nfi\n\ng<h\n\nwhile\n  while\n    until :; do echo yoo hoo!; done\n    false\n  do (a|b)\n  done >f\ndo\n  :>g\ndone\n\n# Another weird example: nobody would ever want to run this.\na<b>c|d<e>f|g<h>i";
     printf("%s\n", test);*/
-    char lel[] = "(asenthua";
+    char test[] = "if (a | b) < /etc/passwd | tr a-z A-Z | sort -u; then :; else echo sort failed!; fi; a";
+    int* ptr1 = NULL;
+    int* ptr2 = NULL;
     int start = 0;
     int end = strlen(test) - 1;
     int word_end = end;
     int a = 0;
     int i;
-    int* reserved = &a;
+    find_semi_pipes(test, start, end, &ptr1, &ptr2);
+    if(ptr1 != NULL)
+    {
+        printf("Semis: ");
+        for(i = 0; ptr1[i] != -1; i++)
+            printf("%d ", ptr1[i]);
+        printf("-1.\n");
+        free(ptr1);
+        ptr1 = NULL;
+    }
+    if(ptr2 != NULL)
+    {
+        printf("Pipes: ");
+        for(i = 0; ptr2[i] != -1; i++)
+            printf("%d ", ptr2[i]);
+        printf("-1.\n");
+        free(ptr2);
+        ptr2 = NULL;
+    }
+    //int* reserved = &a;
     //read_word(test, &start, &word_end);
     
-    char b = read_word(test, &start, &word_end);
+    /*char b = read_word(test, &start, &word_end);
     printf("Start: %d; End: %d\n", start, word_end);
-    a = check_reserved_word(test, start, end);
+    a = check_reserved_word(test, start, end);*/
     //split_everything(test, start, end);
     //printf("Stopped at: %c.\n", (start == end ? test[end-start] : b));
     /*for(i = start; i < word_end + 1; i++)

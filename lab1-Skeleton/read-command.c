@@ -638,7 +638,7 @@ complete_command(char* array, int beg, int end)
     while(semi_locations[i] != -1)
     {
         loc1 = (first ? beg : semi_locations[i]);
-        loc2 = (semi_locations[i + 1] == -1 ? end : (first ? semi_locations[i] : semi_locations[i + 1])) ;
+	loc2 = (first ? semi_locations[i] : (semi_locations[i + 1] == -1 ? end : semi_locations[i + 1]));
         while(pipe_locations[j] != -1 && pipe_locations[j] < loc1)
             j++;
         while(isspace(array[loc1]) || array[loc1] == ';')
@@ -681,7 +681,7 @@ pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
     while(pipe_locations[i] != -1 && pipe_locations[i] < end)
     {
         loc1 = (first ? beg : pipe_locations[i]);
-        loc2 = (pipe_locations[i + 1] == -1 ? end : (first ? pipe_locations[i] : pipe_locations[i + 1])) ;
+	loc2 = (first ? pipe_locations[i] : (pipe_locations[i + 1] == -1 ? end : pipe_locations[i + 1]));
         
         while(isspace(array[loc1]) || array[loc1] == '|')
             loc1++;
@@ -934,6 +934,7 @@ void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipel
     int* pipes = (int*) checked_malloc(sizeof(int)*max_size);
     while(index < end + 1)
     {
+      word_end = end;
         a = read_word(array, &index, &word_end);
         sub_cmd = check_reserved_word(array, index, word_end);
         if(sub_cmd)

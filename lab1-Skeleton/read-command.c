@@ -484,140 +484,150 @@ format_function (char* array, int beg, int end, command_t reserved)
 command_t
 compound_cmd(char* array, int beg, int end)
 {
-  int word_beg, word_end = 0; int index = beg; int stop = end; 
-  int if_num;
+  int word_beg, word_end = 0; int index = 0; int stop = end;
+  int if_num, fi_num = 0;
   int while_num, until_num = 0;
-  
-  int first_if = beg;
+
+  int first_if = 0;
   int first_then = -1;
   int first_else = -1;
-  int first_fi = end;
-  
-  int first_while = beg;
+
+  int first_while = 0;
   int first_do = -1;
-  int first_done = end;
-  int first_until = beg;
+  int first_until = 0;
 
   int type = 0;
   int reserved = 0;
-  
+
   command_t container = NULL;
-  
+
   //this part is getting the type of command
   word_beg = index;
   word_end = stop;
   read_word(array, &word_beg, &word_end);
   type = check_reserved_word(array, word_beg, word_end);
-  
+
   container = (command_t)checked_malloc(sizeof(struct command));
   container->status = -1;
-  
+
   if(type == 1) //if statement
-  {
-	index = word_beg + 2;
-	if_num = 1;
-	container->type = IF_COMMAND;
-	while(index != stop)
     {
-        word_beg = index;
-        word_end = stop;
-        read_word(array, &word_beg, &word_end);
-        reserved = check_reserved_word(array, word_beg, word_end);
-		if(reserved == 1) //if
-		{
-			if_num++;
-		}
-		else if(reserved == 4) //fi
-		{
-			if_num--;
-		}
-		else if(reserved == 2) //then
-		{
-			if(if_num == 1)
-				first_then = word_beg;
-		}
-		else if (reserved == 3) //else
-		{
-			if(if_num == 1)
-				first_else = word_beg;
-		}
-		index = word_end + 1;
-	}
-	if(first_else == -1)
-	{
-		container->u.command[0] = complete_command(array, first_if + 2, first_then + 4);
-		container->u.command[1] = complete_command(array, first_then + 4, first_fi + 2);
-		container->u.command[2] = NULL;
-	}
-	else
-	{
-		container->u.command[0] = complete_command(array, first_if + 2, first_then + 4);
-		container->u.command[1] = complete_command(array, first_then + 4, first_else + 4);
-		container->u.command[2] = complete_command(array, first_else + 4, first_fi + 2);
-	}
-  }
+      index = word_beg + 2;
+      if_num = 1;
+      container->type = IF_COMMAND;
+      while(index <= stop)
+        {
+          word_beg = index;
+          word_end = stop;
+          read_word(array, &word_beg, &word_end);
+          reserved = check_reserved_word(array, word_beg, word_end);
+          if(reserved == 1) //if
+            {
+              if_num++;
+            }
+          else if(reserved == 4) //fi
+            {
+              if_num--;
+            }
+          else if(reserved == 2) //then
+            {
+              if(if_num == 1)
+                first_then = word_beg;
+            }
+          else if (reserved == 3) //else
+            {
+              if(if_num == 1)
+                first_else = word_beg;
+            }
+          index = word_end + 1;
+        }
+if(first_else == -1)
+        {
+          // printf("This is indexes of if to then: %d & %d\n", first_if + 2, first_then - 1);
+          // printf("This is indexes of then to fi: %d & %d\n", first_then + 4, first_fi - 1);
+          // printf("This should be 2 to 4 and then 9 to 12\n");
+		  
+		  container->u.command[0] = complete_command(array, first_if + 2, first_then - 1);
+		  container->u.command[1] = complete_command(array, first_then + 4, end - 1);
+		  container->u.command[2] = NULL;
+        }
+      else
+        {
+          // printf("This is indexes of if to then: %d & %d\n", first_if + 2, first_then - 1);
+          // printf("This is indexes of then to fi: %d & %d\n", first_then + 4, first_else - 1);
+          // printf("This is indexes of if to then: %d & %d\n", first_else + 4, first_fi - 1);
+          // printf("This should be 2 to 4, 9 to 11, 16 to 18\n");
+		  
+		  container->u.command[0] = complete_command(array, first_if + 2, first_then - 1);
+		  container->u.command[1] = complete_command(array, first_then + 4, first_else - 1);
+		  container->u.command[2] = complete_command(array, first_else + 4, end - 1);
+        }
+    }
   if(type == 5 || type == 8)
-  {
-	  if(type == 5)
-	  {
-		while_num = 1;
-		container->type = WHILE_COMMAND;
-	  }
-	  if(type == 8)
-      {
-		until_num = 1;
-		container->type = UNTIL_COMMAND;
-	  }
-	  index = word_beg + 5;
-	  while(index != stop)
     {
-        word_beg = index;
-        word_end = stop;
-        read_word(array, &word_beg, &word_end);
-        reserved = check_reserved_word(array, word_beg, word_end);
-		if(type == 5 && reserved == 5) //while
-		{
-			while_num++;
-		}
-		else if(type == 8 && reserved == 8) //until
-		{
-			until_num++;
-		}
-		else if(reserved ==  6) //do
-		{
-			if(type == 5 && while_num == 1)
-			{
-				first_do = word_beg;
-			}
-			else if(type == 8 && until_num == 1)
-			{
-				first_do = word_beg;
-			}
-		}
-		else if (reserved == 7) //done
-		{
-			
-			if(type == 5)
-				while_num--;
-			else if(type == 8)
-				until_num--;
-		}
-		index = word_end + 1;
-	}
-	if(type == 5) //while
-	{
-		container->u.command[0] = complete_command(array, first_while + 5, first_do + 2);
-		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4);
-		container->u.command[2] = NULL;
-	}
-	if (type == 8) //until
-	{
-		container->u.command[0] = complete_command(array, first_until + 5, first_do + 2);
-		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4);
-		container->u.command[2] = NULL;
-	}
-  }
-  return container;
+      if(type == 5)
+        {
+          while_num = 1;
+          container->type = WHILE_COMMAND;
+        }
+      if(type == 8)
+        {
+          until_num = 1;
+          container->type = UNTIL_COMMAND;
+        }
+      index = word_beg + 5;
+      while(index <= stop)
+{
+          word_beg = index;
+          word_end = stop;
+          read_word(array, &word_beg, &word_end);
+          reserved = check_reserved_word(array, word_beg, word_end);
+          if(type == 5 && reserved == 5) //while
+            {
+              while_num++;
+            }
+          else if(type == 8 && reserved == 8) //until
+            {
+              until_num++;
+            }
+          else if(reserved ==  6) //do
+            {
+              if(type == 5 && while_num == 1)
+                {
+                  first_do = word_beg;
+                }
+              else if(type == 8 && until_num == 1)
+                {
+                  first_do = word_beg;
+                }
+            }
+          else if (reserved == 7) //done
+            {
+              if(type == 5)
+                while_num--;
+              else if(type == 8)
+                until_num--;
+            }
+          index = word_end + 1;
+        }
+      if(type == 5) //while
+        {
+			container->u.command[0] = complete_command(array, first_while + 5, first_do - 1);
+            container->u.command[1] = complete_command(array, first_do + 2, end - 1);
+            container->u.command[2] = NULL;
+          // printf("This is indexes of while to do: %d & %d\n", first_while + 5, first_do - 1);
+          // printf("This is indexes of do to done: %d & %d\n", first_do + 2, first_done - 1);
+          // printf("This should be 5 to 7, 10 to 12\n");
+        }
+      if (type == 8) //until
+        {
+          container->u.command[0] = complete_command(array, first_while + 5, first_do - 1);
+          container->u.command[1] = complete_command(array, first_do + 2, end - 1);
+          container->u.command[2] = NULL;
+            // printf("This is indexes of until to do: %d & %d\n", first_until + 5, first_do - 1);
+            // printf("This is indexes of do to done: %d & %d\n", first_do + 2, first_done - 1);
+        }
+    }
 }
 
 command_t

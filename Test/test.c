@@ -7,7 +7,7 @@
     will put text from beg to < into word, from < to > or end into input, from > to end to output
     if reserved not null, 
 */
-void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline);
+void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline);
 void
 format_function (char* array, int beg, int end, int* reserved)
 {
@@ -216,7 +216,7 @@ complete_command(char* array, int beg, int end)
         beg++;
     while(isspace(array[end]) || array[end] == ';')
         end--;
-    find_semi_pipes(array, beg, end, &semi_locations, &pipe_locations);
+    find_semi_pipes(array, beg, end, 1, &semi_locations, &pipe_locations);
     //command_t container = NULL, c0, current = NULL;
     while(semi_locations[i] != -1)
     {
@@ -769,14 +769,223 @@ split_everything(char* array, int beg, int end)
     printf("\n-------------------------------------------------------End\n");
 }
 
-void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline)
+void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline)
 {
-    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0, num_parens = 0, found_char = 0;
+    int index = beg, word_end = end, reserved = 0;
+    int in_command = 0, first_command = 0, cpd_sub = 0, found_char = 0,
+        num_parens = 0, little_command = 0, last_reserved = 0, done_size = 0;
+    size_t num_semis = 0, num_pipes = 0, max_size = 10;
+    int compound_count[9] = {0,0,0,0,0,0,0,0,0};
+    int* semis = NULL;
+    int* pipes = NULL;
+    int* locations = NULL;
+    if(flag)
+    {
+        semis = (int*) malloc(sizeof(int)*max_size);
+        pipes = (int*) malloc(sizeof(int)*max_size);
+    }
+    else
+    {
+        locations = (int*) malloc(sizeof(int)*4);
+        locations[0] = -1;
+        locations[1] = -1;
+        locations[2] = -1;
+        locations[3] = -1;
+    }
+    int* done_check = NULL;
+    char prev_char = '\n', prev_rel_char = '\n', cur_char;
+    
+    while(index < end + 1)
+    {
+        //true
+        cur_char = array[index];
+        printf("%c.\n", cur_char);
+        switch(cur_char)
+        {
+            case '\t':
+            case ' ': 
+                break;
+            case ';':
+                if(flag && !cpd_sub)
+                {
+                    if(num_semis == max_size)
+                    {
+                        max_size *= 2;
+                        semis = (int*) realloc(semis, sizeof(int)*max_size);
+                        pipes = (int*) realloc(pipes, sizeof(int)*max_size);
+                    }
+                    semis[num_semis++] = index;
+                }
+                found_char = 0;
+                little_command = 0;
+                break;
+            case '\n':
+                if(flag && !cpd_sub && prev_rel_char != '\n' && prev_rel_char != ';')
+                {
+                    if(num_semis == max_size)
+                    {
+                        max_size *= 2;
+                        semis = (int*) realloc(semis, sizeof(int)*max_size);
+                        pipes = (int*) realloc(pipes, sizeof(int)*max_size);
+                    }
+                    semis[num_semis++] = index;
+                }
+                found_char = 0;
+                little_command = 0;
+                break;
+            case '|':
+                printf("cpd_sub: %d", cpd_sub);
+                if(flag && !cpd_sub)
+                {
+                    if(num_pipes == max_size)
+                    {
+                        max_size *= 2;
+                        semis = (int*) realloc(semis, sizeof(int)*max_size);
+                        pipes = (int*) realloc(pipes, sizeof(int)*max_size);
+                    }
+                    pipes[num_pipes++] = index;
+                }
+                found_char = 0;
+                little_command = 0;
+                break;
+            case '(':
+                num_parens++;
+                index++;
+                while(index < end + 1)
+                {
+                    if(array[index] == ')')
+                        num_parens--;
+                    else if(array[index] == '(')
+                        num_parens++;
+                    if(!num_parens)
+                        break;
+                    index++;
+                }
+                break;
+            default:
+                if(!little_command || compound_count[0])
+                {
+                    little_command = 1;
+                    word_end = end;
+                    prev_char = read_word(array, &index, &word_end);
+                    reserved = check_reserved_word(array, index, word_end);
+                    if(reserved && !found_char)
+                    {
+                        if(!cpd_sub)
+                        {
+                            cpd_sub = reserved;
+                            found_char = 0;
+                            if(!flag)
+                                locations[0] = index;   
+                        }
+                            //printf("Invalid: %d\n", invalid);
+                        last_reserved = reserved;
+                        switch(reserved)
+                        {                         
+                            case 0: //not_reserved
+                                break;
+                            case 1: //if
+                                compound_count[reserved]++;
+                                compound_count[0]++;
+                                break;
+                            case 5: //while
+                            case 8: //until
+                                if(done_size < compound_count[5] + compound_count[8] + 1)
+                                {
+                                    done_check = (int*) /*checked_*/realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
+                                    done_size++;
+                                }
+                                done_check[compound_count[5] + compound_count[8]] = reserved;
+                                compound_count[reserved]++;
+                                compound_count[0]++;
+                                break;
+                            case 2: //then
+                                if(cpd_sub == 1 && !flag)
+                                if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                     locations[1] = index;
+                                compound_count[2]++;
+                                break;
+                            case 3: //else
+                                if(cpd_sub == 1 && !flag)
+                                if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                    locations[2] = index;
+                                compound_count[3]++;
+                                break;
+                            case 6: //do
+                                if((cpd_sub == 5 || cpd_sub == 8)&& !flag)
+                                {
+                                    if((compound_count[5] == 1 && !compound_count[1] && !compound_count[8]) || (compound_count[8] == 1 && !compound_count[1] && !compound_count[5]))
+                                        locations[1] = index;
+                                }
+                                compound_count[6]++;
+                                break;
+                            case 4: //fi
+                                if(cpd_sub == 1 && !flag)
+                                    if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                        locations[3] = index;
+                                compound_count[1]--;
+                                compound_count[2]--;
+                                if(compound_count[3])
+                                    compound_count[3]--;
+                                compound_count[0]--;
+                                first_command = 1;
+                                break;
+                            case 7: //done
+                                printf("Compound6: %d", compound_count[6]);
+                                if(compound_count[6])
+                                {
+                                    if(compound_count[5] + compound_count[8] == 1 && !flag)
+                                        if(!compound_count[1])
+                                            locations[2] = index;
+                                    compound_count[6]--;
+                                    compound_count[done_check[compound_count[5] + compound_count[8] - 1]]--;
+                                    compound_count[0]--;
+                                    first_command = 1;
+                                }
+                            default:
+                                break;
+                        }
+                        printf("COMPOUND_COUNT: %d", compound_count[0]);
+                        if(!compound_count[0]) //if done with compounds
+                        {
+                            printf("FOUND END");
+                            found_char = 1;
+                            cpd_sub = 0;
+                            free(done_check);
+                            done_check = NULL;
+                            done_size = 0;
+                        }
+                        index = word_end;
+                    }
+                    else
+                    {
+                        found_char = 1;
+                        index = word_end;
+                    }
+                }
+        }
+        if(cur_char != ' ' && cur_char != '\t')
+            prev_rel_char = cur_char;
+        index++;
+    }    
+    if(flag)
+    {
+        semis[num_semis] = -1;
+        pipes[num_pipes] = -1;
+        *semicolon = semis;
+        *pipeline = pipes;
+    }
+    else
+    {
+        *semicolon = locations;
+    }
+    return;
+    /*int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0, num_parens = 0, found_char = 0;
     int num_res = 0;
     char a;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
-    int* semis = (int*) /*checked_*/malloc(sizeof(int)*max_size);
-    int* pipes = (int*) /*checked_*/malloc(sizeof(int)*max_size);
+    int* semis = (int*) /*checked_malloc(sizeof(int)*max_size);
+    int* pipes = (int*) /*checked_malloc(sizeof(int)*max_size);
     while(index < end + 1)
     {
         a = read_word(array, &index, &word_end);
@@ -848,7 +1057,7 @@ void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipel
                 {
                     max_size *= 2;
                     semis = (int*) realloc(semis, sizeof(int)*max_size);
-                    pipes = (int*) realloc(semis, sizeof(int)*max_size);
+                    pipes = (int*) realloc(pipes, sizeof(int)*max_size);
                 }
                 semis[num_semis++] = index;
             }
@@ -858,13 +1067,13 @@ void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipel
                 {
                     max_size *= 2;
                     semis = (int*) realloc(semis, sizeof(int)*max_size);
-                    pipes = (int*) realloc(semis, sizeof(int)*max_size);
+                    pipes = (int*) realloc(pipes, sizeof(int)*max_size);
                 }
                 pipes[num_pipes++] = index;
             }
         }
         index++;
-    }
+    }*/
 }
 
 int
@@ -898,7 +1107,7 @@ check_char(int a, int flag)
 int main()
 {
     //char test[] = "true\n\ng++ -c foo.c\n\n: : :\n\nif cat < /etc/passwd | tr a-z A-Z | sort -u; then :; else echo sort failed!; fi\n\na b<c > d\n\nif\n  if a;a;a; then b; else :; fi\nthen\n\n if c\n  then if d | e; then f; fi\n fi\nfi\n\ng<h\n\nwhile\n  while\n    until :; do echo yoo hoo!; done\n    false\n  do (a|b)\n  done >f\ndo\n  :>g\ndone\n\n# Another weird example: nobody would ever want to run this.\na<b>c|d<e>f|g<h>i";
-    char test[] = "\n\n\n#this is another test\n\na\n\n#this is a test\n\n\na";
+    char test[] = "while a; do b; done < a       ";
     printf("%s\n", test);
     int* ptr1 = NULL;
     int* ptr2 = NULL;
@@ -907,13 +1116,23 @@ int main()
     int word_end = end;
     int a = 0;
     int i;
-    //find_semi_pipes(test, start, end, &ptr1, &ptr2);
-    /*if(ptr1 != NULL)
+    find_semi_pipes(test, start, end, a, &ptr1, &ptr2);
+    printf("OK\n");
+    if(ptr1 != NULL && a)
     {
         printf("Semis: ");
         for(i = 0; ptr1[i] != -1; i++)
             printf("%d ", ptr1[i]);
         printf("-1.\n");
+        free(ptr1);
+        ptr1 = NULL;
+    }
+    if(!a && ptr1 != NULL)
+    {
+        printf("Locations: ");
+        for(i = 0; i < 4; i++)
+            printf("%d ", ptr1[i]);
+        printf("done");
         free(ptr1);
         ptr1 = NULL;
     }
@@ -925,14 +1144,14 @@ int main()
         printf("-1.\n");
         free(ptr2);
         ptr2 = NULL;
-    }*/
+    }
     //int* reserved = &a;
     //read_word(test, &start, &word_end);
     
     /*char b = read_word(test, &start, &word_end);
     printf("Start: %d; End: %d\n", start, word_end);
     a = check_reserved_word(test, start, end);*/
-    split_everything(test, start, end);
+    //split_everything(test, start, end);
     //printf("Stopped at: %c.\n", (start == end ? test[end-start] : b));
     /*for(i = start; i < word_end + 1; i++)
     {

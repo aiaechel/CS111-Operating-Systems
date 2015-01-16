@@ -47,8 +47,8 @@ command_t complete_command(char* array, int beg, int end);
 command_t pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start);
 command_t subshell(char* array, int beg, int end);
 command_t format_command(char* array, int beg, int end);
-void make_error (int linenum);
-void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline);
+void make_error (int linenum, char* everything, command_t* command_array);
+void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline);
 
 //reads all chars in stream, sends everything to 
 command_stream_t
@@ -386,8 +386,7 @@ split_everything(char* array, int beg, int end)
             invalid = 1;        
         if(invalid)
         {
-            make_error(line_num);
-            return command_array;
+            make_error(line_num, everything, command_array);
         }
         if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
         {
@@ -395,8 +394,7 @@ split_everything(char* array, int beg, int end)
             in_command = 0;
             if(num_parens)
             {
-                make_error(line_num);
-                return command_array;
+                make_error(line_num, everything, command_array);
             }
             current = complete_command(array, command_start, command_end);
             command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
@@ -420,8 +418,7 @@ split_everything(char* array, int beg, int end)
         {
             if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>' || num_parens || compound_count[0])
             {
-                make_error(line_num);
-                return command_array;
+                make_error(line_num, everything, command_array);
             }
         }
         index++;
@@ -640,7 +637,7 @@ complete_command(char* array, int beg, int end)
         beg++;
     while(isspace(array[end]) || array[end] == ';')
         end--;
-    find_semi_pipes(array, beg, end, &semi_locations, &pipe_locations);
+    find_semi_pipes(array, beg, end, 1, &semi_locations, &pipe_locations);
     command_t container = NULL, c0, current = NULL;
     while(semi_locations[i] != -1)
     {
@@ -741,16 +738,43 @@ format_command(char* array, int beg, int end)
     splitter = read_word(array, &word_beg, &word_end);
     reserve = check_reserved_word(array, word_beg, word_end);
 	command_t sub_command = NULL, container = NULL;
-
-	int index = word_end + 1;
-	int if_num = -1;
-	int uwhile_num = -1;
-	int type = -1;
-	int stop = -1;
-	int while_yes = 0;
+    int* locations;
     if(reserve)
     {
-		if(reserve == 1)
+        find_semi_pipes(array, word_beg, end, 0, &locations, NULL);
+        sub_command = (command_t) checked_malloc(sizeof(struct command));
+        switch(reserve)
+        {
+            case 1:
+                if(locations[2] == -1)
+                {
+                    sub_command->u.command[0] = complete_command(array, locations[0] + 2, locations[1] - 1);
+                    sub_command->u.command[1] = complete_command(array, locations[1] + 4, locations[3] - 1);
+                    sub_command->u.command[2] = NULL;
+                }
+                else
+                {
+                    sub_command->u.command[0] = complete_command(array, locations[0] + 2, locations[1] - 1);
+                    sub_command->u.command[1] = complete_command(array, locations[1] + 4, locations[2] - 1);
+                    sub_command->u.command[2] = complete_command(array, locations[2] + 4, locations[3] - 1);
+                }
+                sub_command->status = -1;
+                sub_command->type = IF_COMMAND;
+                word_end = locations[3] + 2;
+                break;
+            case 5:
+            case 8:
+                sub_command->u.command[0] = complete_command(array, locations[0] + 5, locations[1] - 1);
+                sub_command->u.command[1] = complete_command(array, locations[1] + 2, locations[2] - 1);
+                sub_command->u.command[2] = NULL;
+                sub_command->u.status = -1;
+                sub_command->type = (reserve == 5 ? WHILE_COMMAND : UNTIL_COMMAND);
+                word_end = locations[2] + 4;
+                break;
+            default:
+                break;
+        }
+		/*if(reserve == 1)
 		{
 			if_num = 1;
 			while(index <= end)
@@ -796,12 +820,8 @@ format_command(char* array, int beg, int end)
 
 				index = word_end + 1;
 			}
-		}
-        sub_command = compound_cmd(array, word_beg, stop);
-        word_end = end;
-        read_word(array, &stop, &word_end);
-	word_end++;
-	word_beg = word_end;
+		}*/
+        
     }
     else if(splitter == '(')
     {
@@ -809,11 +829,16 @@ format_command(char* array, int beg, int end)
         while(array[word_end] != ')')
             word_end--;
         word_end--;
-        sub_command = subshell(array, word_beg + 1, word_end);
-	word_end++;
-	word_beg = word_end;
+        sub_command = complete_command(array, word_beg, word_end);
+        container = (command_t) checked_malloc(sizeof(struct command));
+        container->type = SUBSHELL_COMMAND;
+        container->status = -1;
+        container->u.command[0] = sub_command;
+        sub_command = container;
+        container = NULL;
+        word_end += 2;
     }
-    container = format_function(array, word_beg, end, sub_command);
+    container = format_function(array, word_end, end, sub_command);
     return container;
 }
 
@@ -928,109 +953,217 @@ remove_whitespace(char* array, int beg, int end)
     return text;
 }
 
-void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline)
+void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline)
 {
-    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0, num_parens = 0;
-    int num_res = 0;
-    char a;
+    int index = beg, word_end = end, reserved = 0;
+    int in_command = 0, first_command = 0, cpd_sub = 0, found_char = 0,
+        num_parens = 0, little_command = 0, last_reserved = 0, done_size = 0;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
-    int* semis = (int*) checked_malloc(sizeof(int)*max_size);
-    int* pipes = (int*) checked_malloc(sizeof(int)*max_size);
+    int compound_count[9] = {0,0,0,0,0,0,0,0,0};
+    int* semis = NULL;
+    int* pipes = NULL;
+    int* locations = NULL;
+    if(flag)
+    {
+        semis = (int*) malloc(sizeof(int)*max_size);
+        pipes = (int*) malloc(sizeof(int)*max_size);
+    }
+    else
+    {
+        locations = (int*) malloc(sizeof(int)*4);
+        locations[0] = -1;
+        locations[1] = -1;
+        locations[2] = -1;
+        locations[3] = -1;
+    }
+    int* done_check = NULL;
+    char prev_char = '\n', prev_rel_char = '\n', cur_char;
+    
     while(index < end + 1)
     {
-      word_end = end;
-        a = read_word(array, &index, &word_end);
-        sub_cmd = check_reserved_word(array, index, word_end);
-        if(sub_cmd)
-        {   
-            if(!first_reserved)
-                first_reserved = sub_cmd;
-            switch(sub_cmd)
-            {
-                case 1: //if
-                case 5: //while
-                case 8: //until
-                    if(sub_cmd == first_reserved || (first_reserved*sub_cmd == 40))
-                        num_res++;
-                    break;
-                case 4: //fi
-                    if(first_reserved == 1)
-                        num_res--;
-                    break;
-                case 7: //done
-                    if(first_reserved == 5 || first_reserved == 8)
-                        num_res--;
-                    break;
-                default:
-                    break;
-            }
-            if(!num_res)
-            {
-                sub_cmd = 0;
-                first_reserved = 0;
-            }
-            index = word_end;
-        }
-        else if(a == '(')
+        //true
+        cur_char = array[index];
+        //printf("%c.\n", cur_char);
+        switch(cur_char)
         {
-            num_parens++;
-            index++;
-            while(index < end + 1)
-            {
-                if(array[index] == ')')
-                    num_parens--;
-                else if(array[index] == '(')
-                    num_parens++;
-                if(!num_parens)
-                    break;
-                index++;
-            }
-        }
-        else
-        {
-            index = word_end;
-            while(index < end + 1 && array[index] != ';' && array[index] != '\n' && array[index] != '|')
-                index++;
-            if(first_reserved)
-            {
-            }
-            else if(index == end || index == end + 1)
-            {
-                semis[num_semis] = -1;
-                pipes[num_pipes] = -1;
-                *semicolon = semis;
-                *pipeline = pipes;
-                return;
-            }
-            else if(array[index] == ';' || array[index] == '\n')
-            {
-                if(num_semis == max_size)
+            case '\t':
+            case ' ': 
+                break;
+            case ';':
+                if(flag && !cpd_sub)
                 {
-                    max_size *= 2;
-                    semis = (int*) realloc(semis, sizeof(int)*max_size);
-                    pipes = (int*) realloc(semis, sizeof(int)*max_size);
+                    if(num_semis == max_size)
+                    {
+                        max_size *= 2;
+                        semis = (int*) realloc(semis, sizeof(int)*max_size);
+                        pipes = (int*) realloc(pipes, sizeof(int)*max_size);
+                    }
+                    semis[num_semis++] = index;
                 }
-                semis[num_semis++] = index;
-            }
-            else if(array[index] == '|')
-            {
-                if(num_pipes == max_size)
+                found_char = 0;
+                little_command = 0;
+                break;
+            case '\n':
+                if(flag && !cpd_sub && prev_rel_char != '\n' && prev_rel_char != ';')
                 {
-                    max_size *= 2;
-                    semis = (int*) realloc(semis, sizeof(int)*max_size);
-                    pipes = (int*) realloc(semis, sizeof(int)*max_size);
+                    if(num_semis == max_size)
+                    {
+                        max_size *= 2;
+                        semis = (int*) realloc(semis, sizeof(int)*max_size);
+                        pipes = (int*) realloc(pipes, sizeof(int)*max_size);
+                    }
+                    semis[num_semis++] = index;
                 }
-                pipes[num_pipes++] = index;
-            }
+                found_char = 0;
+                little_command = 0;
+                break;
+            case '|':
+                //printf("cpd_sub: %d", cpd_sub);
+                if(flag && !cpd_sub)
+                {
+                    if(num_pipes == max_size)
+                    {
+                        max_size *= 2;
+                        semis = (int*) realloc(semis, sizeof(int)*max_size);
+                        pipes = (int*) realloc(pipes, sizeof(int)*max_size);
+                    }
+                    pipes[num_pipes++] = index;
+                }
+                found_char = 0;
+                little_command = 0;
+                break;
+            case '(':
+                num_parens++;
+                index++;
+                while(index < end + 1)
+                {
+                    if(array[index] == ')')
+                        num_parens--;
+                    else if(array[index] == '(')
+                        num_parens++;
+                    if(!num_parens)
+                        break;
+                    index++;
+                }
+                break;
+            default:
+                if(!little_command || compound_count[0])
+                {
+                    little_command = 1;
+                    word_end = end;
+                    prev_char = read_word(array, &index, &word_end);
+                    reserved = check_reserved_word(array, index, word_end);
+                    if(reserved && !found_char)
+                    {
+                        if(!cpd_sub)
+                        {
+                            cpd_sub = reserved;
+                            found_char = 0;
+                            if(!flag)
+                                locations[0] = index;   
+                        }
+                            //printf("Invalid: %d\n", invalid);
+                        last_reserved = reserved;
+                        switch(reserved)
+                        {                         
+                            case 0: //not_reserved
+                                break;
+                            case 1: //if
+                                compound_count[reserved]++;
+                                compound_count[0]++;
+                                break;
+                            case 5: //while
+                            case 8: //until
+                                if(done_size < compound_count[5] + compound_count[8] + 1)
+                                {
+                                    done_check = (int*) /*checked_*/realloc(done_check, sizeof(int)*(compound_count[5] + compound_count[8] + 1));
+                                    done_size++;
+                                }
+                                done_check[compound_count[5] + compound_count[8]] = reserved;
+                                compound_count[reserved]++;
+                                compound_count[0]++;
+                                break;
+                            case 2: //then
+                                if(cpd_sub == 1 && !flag)
+                                if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                     locations[1] = index;
+                                compound_count[2]++;
+                                break;
+                            case 3: //else
+                                if(cpd_sub == 1 && !flag)
+                                if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                    locations[2] = index;
+                                compound_count[3]++;
+                                break;
+                            case 6: //do
+                                if((cpd_sub == 5 || cpd_sub == 8)&& !flag)
+                                {
+                                    if((compound_count[5] == 1 && !compound_count[1] && !compound_count[8]) || (compound_count[8] == 1 && !compound_count[1] && !compound_count[5]))
+                                        locations[1] = index;
+                                }
+                                compound_count[6]++;
+                                break;
+                            case 4: //fi
+                                if(cpd_sub == 1 && !flag)
+                                    if(compound_count[1] == 1 && !compound_count[5] && !compound_count[8])
+                                        locations[3] = index;
+                                compound_count[1]--;
+                                compound_count[2]--;
+                                if(compound_count[3])
+                                    compound_count[3]--;
+                                compound_count[0]--;
+                                first_command = 1;
+                                break;
+                            case 7: //done
+                                //printf("Compound6: %d", compound_count[6]);
+                                if(compound_count[6])
+                                {
+                                    if(compound_count[5] + compound_count[8] == 1 && !flag)
+                                        if(!compound_count[1])
+                                            locations[2] = index;
+                                    compound_count[6]--;
+                                    compound_count[done_check[compound_count[5] + compound_count[8] - 1]]--;
+                                    compound_count[0]--;
+                                    first_command = 1;
+                                }
+                            default:
+                                break;
+                        }
+                        //printf("COMPOUND_COUNT: %d", compound_count[0]);
+                        if(!compound_count[0]) //if done with compounds
+                        {
+                            //printf("FOUND END");
+                            found_char = 1;
+                            cpd_sub = 0;
+                            free(done_check);
+                            done_check = NULL;
+                            done_size = 0;
+                        }
+                        index = word_end;
+                    }
+                    else
+                    {
+                        found_char = 1;
+                        index = word_end;
+                    }
+                }
         }
+        if(cur_char != ' ' && cur_char != '\t')
+            prev_rel_char = cur_char;
         index++;
+    }    
+    if(flag)
+    {
+        semis[num_semis] = -1;
+        pipes[num_pipes] = -1;
+        *semicolon = semis;
+        *pipeline = pipes;
     }
-     semis[num_semis] = -1;
-                pipes[num_pipes] = -1;
-                *semicolon = semis;
-                *pipeline = pipes;
-                return;
-
+    else
+    {
+        *semicolon = locations;
+    }
+    return;
 }
 
 int
@@ -1102,8 +1235,17 @@ free_stream(command_stream_t c)
 }
 //If not work or unexpected output, don't need to return command_t anymore; just print syntax error, and return from split everything
 void
-make_error (int linenum)
+make_error (int linenum, char* everything, command_t* command_array)
 {
     fprintf(stderr, "%d: Syntax error found!", linenum);
-    exit(1);
+    free(everything);
+    int i = 0;
+    while(command_array[i] != NULL)
+    {
+        free_command(command_array[i]);
+        command_array[i++] = NULL;
+    }
+    free(command_array);
+    command_array = NULL;
+    exit(-1);
 }

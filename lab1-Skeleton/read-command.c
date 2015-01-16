@@ -1050,8 +1050,6 @@ free_command(command_t c)
         return;
     switch (c->type)
     {
-    case ERROR_COMMAND:
-        break;
     case SIMPLE_COMMAND:
         free(c->u.word[0]);
         free(c->u.word);

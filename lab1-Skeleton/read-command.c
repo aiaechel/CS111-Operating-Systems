@@ -436,7 +436,14 @@ split_everything(char* array, int beg, int end)
         index++;
     }
     in_command = 0;
-    
+    if(!invalid)
+    {
+        current = complete_command(array, command_start, end);
+        command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
+        command_array[command_count++] = current;
+        command_array[command_count] = NULL;
+    }
+    return command_array;
     /*int i;
     for(i = command_start; i < end + 1; i++)
     {
@@ -614,7 +621,7 @@ compound_cmd(char* array, int beg, int end)
 	}
 	if (type == 8) //until
 	{
-		container->u.command[0] = complete_command(array, first_while + 5, first_do + 2);
+		container->u.command[0] = complete_command(array, first_until + 5, first_do + 2);
 		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4);
 		container->u.command[2] = NULL;
 	}

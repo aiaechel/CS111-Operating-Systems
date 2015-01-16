@@ -637,8 +637,8 @@ complete_command(char* array, int beg, int end)
     command_t container = NULL, c0, current = NULL;
     while(semi_locations[i] != -1)
     {
-        loc1 = (!i ? beg : semi_locations[i]);
-        loc2 = (semi_locations[i + 1] == -1 ? end : semi_locations[i + 1]) ;
+        loc1 = (first ? beg : semi_locations[i]);
+        loc2 = (semi_locations[i + 1] == -1 ? end : (first ? semi_locations[i] : semi_locations[i + 1])) ;
         while(pipe_locations[j] != -1 && pipe_locations[j] < loc1)
             j++;
         while(isspace(array[loc1]) || array[loc1] == ';')
@@ -650,6 +650,7 @@ complete_command(char* array, int beg, int end)
         {
             container = current;
             first = 0;
+	    continue;
         }
         else
         {
@@ -677,10 +678,10 @@ pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
     int i = pipe_start, first = 1, loc1, loc2;
     command_t container = NULL, current, c0;
     
-    while(pipe_locations[i] != -1 && pipe_locations[i + 1] < end)
+    while(pipe_locations[i] != -1 && pipe_locations[i] < end)
     {
-        loc1 = (!i ? beg : pipe_locations[i]);
-        loc2 = (pipe_locations[i + 1] == -1 ? end : pipe_locations[i + 1]) ;
+        loc1 = (first ? beg : pipe_locations[i]);
+        loc2 = (pipe_locations[i + 1] == -1 ? end : (first ? pipe_locations[i] : pipe_locations[i + 1])) ;
         
         while(isspace(array[loc1]) || array[loc1] == '|')
             loc1++;
@@ -692,6 +693,7 @@ pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
         {
             container = current;
             first = 0;
+	    continue;
         }
         else
         {
@@ -746,8 +748,9 @@ format_command(char* array, int beg, int end)
 			if_num = 1;
 			while(index != end + 1)
 			{
-				read_word(array, &word_beg, &word_end);
-				type = check_reserved_word(array, word_beg, word_end);
+			  word_end = end;
+				read_word(array, &index, &word_end);
+				type = check_reserved_word(array, index, word_end);
 				if (type == 1) //if
 					if_num++;
 				if (type == 4)
@@ -769,8 +772,9 @@ format_command(char* array, int beg, int end)
 			uwhile_num = 1;
 			while(index != end + 1)
 			{
-				read_word(array, &word_beg, &word_end);
-				type = check_reserved_word(array, word_beg, word_end);
+			  word_end = end;
+				read_word(array, &index, &word_end);
+				type = check_reserved_word(array, index, word_end);
 				if (type == 5 && while_yes == 1)
 					uwhile_num++;
 				if (type == 8 && while_yes == 0)
@@ -792,6 +796,8 @@ format_command(char* array, int beg, int end)
         sub_command = compound_cmd(array, word_beg, stop);
         word_end = end;
         read_word(array, &stop, &word_end);
+	word_end++;
+	word_beg = word_end;
     }
     else if(splitter == '(')
     {
@@ -800,8 +806,10 @@ format_command(char* array, int beg, int end)
             word_end--;
         word_end--;
         sub_command = subshell(array, word_beg + 1, word_end);
+	word_end++;
+	word_beg = word_end;
     }
-    container = format_function(array, word_end + 1, end, sub_command);
+    container = format_function(array, word_beg, end, sub_command);
     return container;
 }
 
@@ -922,8 +930,8 @@ void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipel
     int num_res = 0;
     char a;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
-    int* semis = (int*) /*checked_*/malloc(sizeof(int)*max_size);
-    int* pipes = (int*) /*checked_*/malloc(sizeof(int)*max_size);
+    int* semis = (int*) checked_malloc(sizeof(int)*max_size);
+    int* pipes = (int*) checked_malloc(sizeof(int)*max_size);
     while(index < end + 1)
     {
         a = read_word(array, &index, &word_end);
@@ -981,7 +989,7 @@ void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipel
             if(first_reserved)
             {
             }
-            else if(index == end + 1)
+            else if(index == end || index == end + 1)
             {
                 semis[num_semis] = -1;
                 pipes[num_pipes] = -1;
@@ -1012,6 +1020,12 @@ void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipel
         }
         index++;
     }
+     semis[num_semis] = -1;
+                pipes[num_pipes] = -1;
+                *semicolon = semis;
+                *pipeline = pipes;
+                return;
+
 }
 
 int

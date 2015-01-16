@@ -386,7 +386,7 @@ split_everything(char* array, int beg, int end)
             invalid = 1;        
         if(invalid)
         {
-            make_error(line_num, everything, command_array);
+            make_error(line_num, array, command_array);
         }
         if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
         {
@@ -394,7 +394,7 @@ split_everything(char* array, int beg, int end)
             in_command = 0;
             if(num_parens)
             {
-                make_error(line_num, everything, command_array);
+                make_error(line_num, array, command_array);
             }
             current = complete_command(array, command_start, command_end);
             command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
@@ -418,7 +418,7 @@ split_everything(char* array, int beg, int end)
         {
             if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>' || num_parens || compound_count[0])
             {
-                make_error(line_num, everything, command_array);
+                make_error(line_num, array, command_array);
             }
         }
         index++;
@@ -767,7 +767,7 @@ format_command(char* array, int beg, int end)
                 sub_command->u.command[0] = complete_command(array, locations[0] + 5, locations[1] - 1);
                 sub_command->u.command[1] = complete_command(array, locations[1] + 2, locations[2] - 1);
                 sub_command->u.command[2] = NULL;
-                sub_command->u.status = -1;
+                sub_command->status = -1;
                 sub_command->type = (reserve == 5 ? WHILE_COMMAND : UNTIL_COMMAND);
                 word_end = locations[2] + 4;
                 break;
@@ -956,7 +956,7 @@ remove_whitespace(char* array, int beg, int end)
 void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline)
 {
     int index = beg, word_end = end, reserved = 0;
-    int in_command = 0, first_command = 0, cpd_sub = 0, found_char = 0,
+    int first_command = 0, cpd_sub = 0, found_char = 0,
         num_parens = 0, little_command = 0, last_reserved = 0, done_size = 0;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
     int compound_count[9] = {0,0,0,0,0,0,0,0,0};

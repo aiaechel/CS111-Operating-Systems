@@ -608,18 +608,14 @@ compound_cmd(char* array, int beg, int end)
 	}
 	if(type == 5) //while
 	{
-		find_semi_pipe(array, first_while + 5, first_do + 2, &pipes, &semis);
-		container->u.command[0] = complete_command(array, first_while + 5, first_do + 2, pipes, semis);
-		find_semi_pipe(array, first_do + 2, first_done + 4, &pipes, &semis);
-		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4, pipes, semis);
+		container->u.command[0] = complete_command(array, first_while + 5, first_do + 2);
+		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4);
 		container->u.command[2] = NULL;
 	}
 	if (type == 8) //until
 	{
-		find_semi_pipe(array, first_until + 5, first_do + 2, &pipes, &semis);
-		container->u.command[0] = complete_command(array, first_while + 5, first_do + 2, pipes, semis);
-		find_semi_pipe(array, first_do + 2, first_done + 4, &pipes, &semis);
-		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4, pipes, semis);
+		container->u.command[0] = complete_command(array, first_while + 5, first_do + 2);
+		container->u.command[1] = complete_command(array, first_do + 2, first_done + 4);
 		container->u.command[2] = NULL;
 	}
   }
@@ -680,7 +676,7 @@ complete_command(char* array, int beg, int end)
 command_t
 pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
 {
-    int i = pipe_start, index = beg, first = 1, loc1, loc2;
+    int i = pipe_start, first = 1, loc1, loc2;
     command_t container = NULL, current, c0;
     
     while(pipe_locations[i] != -1 && pipe_locations[i + 1] < end)
@@ -740,7 +736,6 @@ format_command(char* array, int beg, int end)
 	command_t sub_command = NULL, container = NULL;
 	
 	int index = word_end + 1;
-	int end_of_command = -1;
 	int if_num = -1;
 	int uwhile_num = -1;
 	int type = -1;

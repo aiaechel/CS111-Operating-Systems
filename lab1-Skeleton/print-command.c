@@ -69,10 +69,7 @@ command_indented_print (int indent, command_t c)
       command_indented_print (indent + 1, c->u.command[0]);
       printf ("\n%*s)", indent, "");
       break;
-    
-    case ERROR_COMMAND:
-      fprintf(stderr, "%d: Syntax error found!\n", c->status);
-      break;
+
     default:
       abort ();
     }

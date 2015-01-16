@@ -45,7 +45,7 @@ command_t format_function (char* array, int beg, int end, command_t reserved);
 command_t compound_cmd(char* array, int beg, int end);
 command_t complete_command(char* array, int beg, int end);
 command_t pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start);
-command_t subshell(char* array, int beg, int* end);
+command_t subshell(char* array, int beg, int end);
 command_t format_command(char* array, int beg, int end);
 command_t make_error (int linenum);
 void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline);
@@ -250,7 +250,7 @@ split_everything(char* array, int beg, int end)
                         little_command = 1;
                         word_end = end;
                         prev_char = read_word(array, &index, &word_end);
-                        if(!read_word)
+                        if(!prev_char)
                         {
                             invalid = 1;
                             break;
@@ -387,25 +387,25 @@ split_everything(char* array, int beg, int end)
         if(invalid)
         {
             current = make_error(line_num);
-            command_array = (command_t*) checked_realloc(sizeof(command_t)*(command_count + 2));
+            command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
             command_array[command_count++] = current;
             command_array[command_count] = NULL;
             return command_array;
         }
         if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
         {
-            int i;
+            //int i;
             in_command = 0;
             if(num_parens)
             {
                 current = make_error(line_num);
-                command_array = (command_t*) checked_realloc(sizeof(command_t)*(command_count + 2));
+                command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
                 command_array[command_count++] = current;
                 command_array[command_count] = NULL;
                 return command_array;
             }
             current = complete_command(array, command_start, command_end);
-            command_array = (command_t*) checked_realloc(sizeof(command_t)*(command_count + 2));
+            command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
             command_array[command_count++] = current;
             command_array[command_count] = NULL;
             /*for(i = command_start; i < command_end + 1; i++)
@@ -427,7 +427,7 @@ split_everything(char* array, int beg, int end)
             if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>' || num_parens || compound_count[0])
             {
                 current = make_error(line_num);
-                command_array = (command_t*) checked_realloc(sizeof(command_t)*(command_count + 2));
+                command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
                 command_array[command_count++] = current;
                 command_array[command_count] = NULL;
                 return command_array;
@@ -467,7 +467,7 @@ format_function (char* array, int beg, int end, command_t reserved)
     {
         ret = (command_t) checked_malloc(sizeof(struct command));
         ret->u.word = (char**) checked_malloc(sizeof(char*) * 2);
-        ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1);
+        ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1));
         ret->u.word[1] = NULL;
         ret->type = SIMPLE_COMMAND;
         ret->status = -1;
@@ -487,11 +487,8 @@ command_t
 compound_cmd(char* array, int beg, int end)
 {
   int word_beg, word_end = 0; int index = beg; int stop = end; 
-  int if_num, fi_num = 0;
+  int if_num;
   int while_num, until_num = 0;
-  
-  int* pipes = NULL;
-  int* semis = NULL;
   
   int first_if = beg;
   int first_then = -1;
@@ -507,7 +504,6 @@ compound_cmd(char* array, int beg, int end)
   int reserved = 0;
   
   command_t container = NULL;
-  command size;
   
   //this part is getting the type of command
   word_beg = index;
@@ -515,7 +511,7 @@ compound_cmd(char* array, int beg, int end)
   read_word(array, &word_beg, &word_end);
   type = check_reserved_word(array, word_beg, word_end);
   
-  container = (command_t)checked_malloc(sizeof(size));
+  container = (command_t)checked_malloc(sizeof(struct command));
   container->status = -1;
   
   if(type == 1) //if statement
@@ -551,20 +547,15 @@ compound_cmd(char* array, int beg, int end)
 	}
 	if(first_else == -1)
 	{
-		find_semi_pipe(array, first_if + 2, first_then + 4, &pipes, &semis);
-		container->u.command[0] = complete_command(array, first_if + 2, first_then + 4, pipes, semis);
-		find_semi_pipe(array, first_then + 4, first_fi + 2, &pipes, &semis);
-		container->u.command[1] = complete_command(array, first_then + 4, first_fi + 2, pipes, semis);
+		container->u.command[0] = complete_command(array, first_if + 2, first_then + 4);
+		container->u.command[1] = complete_command(array, first_then + 4, first_fi + 2);
 		container->u.command[2] = NULL;
 	}
 	else
 	{
-		find_semi_pipe(array, first_if + 2, first_then + 4, &pipes, &semis);
-		container->u.command[0] = complete_command(array, first_if + 2, first_then + 4, pipes, semis);
-		find_semi_pipe(array, first_then + 4, first_else + 4, &pipes, &semis);
-		container->u.command[1] = complete_command(array, first_then + 4, first_else + 4, pipes, semis);
-		find_semi_pipe(array, first_else + 4, first_fi + 2, &pipes, &semis);
-		container->u.command[2] = complete_command(array, first_else + 4, first_fi + 2, pipes, semis);
+		container->u.command[0] = complete_command(array, first_if + 2, first_then + 4);
+		container->u.command[1] = complete_command(array, first_then + 4, first_else + 4);
+		container->u.command[2] = complete_command(array, first_else + 4, first_fi + 2);
 	}
   }
   if(type == 5 || type == 8)
@@ -672,8 +663,8 @@ complete_command(char* array, int beg, int end)
             container = (command_t) checked_malloc(sizeof(struct command));
             container->type = SEQUENCE_COMMAND;
             container->status = -1;
-            container->u.data[0] = c0;
-            container->u.data[1] = current;
+            container->u.command[0] = c0;
+            container->u.command[1] = current;
         
         }
         i++;
@@ -714,8 +705,8 @@ pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
             container = (command_t) checked_malloc(sizeof(struct command));
             container->type = PIPE_COMMAND;
             container->status = -1;
-            container->u.data[0] = c0;
-            container->u.data[1] = current;
+            container->u.command[0] = c0;
+            container->u.command[1] = current;
         }
         i++;
     }
@@ -725,7 +716,7 @@ pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
 }
 
 command_t 
-subshell(char* array, int beg, int* end)
+subshell(char* array, int beg, int end)
 {
     command_t inside, container;
     inside = complete_command(array, beg, end);
@@ -746,7 +737,7 @@ format_command(char* array, int beg, int end)
     word_beg = beg;
     splitter = read_word(array, &word_beg, &word_end);
     reserve = check_reserved_word(array, word_beg, word_end);
-	
+	command_t sub_command = NULL, container = NULL;
 	
 	int index = word_end + 1;
 	int end_of_command = -1;
@@ -934,7 +925,7 @@ remove_whitespace(char* array, int beg, int end)
 
 void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline)
 {
-    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0, num_parens = 0, found_char = 0;
+    int index = beg, word_end = end, first_reserved = 0, sub_cmd = 0, num_parens = 0;
     int num_res = 0;
     char a;
     size_t num_semis = 0, num_pipes = 0, max_size = 10;
@@ -1099,12 +1090,12 @@ free_stream(command_stream_t c)
     }
     free(c);
 }
-
+//If not work or unexpected output, don't need to return command_t anymore; just print syntax error, and return from split everything
 command_t
 make_error (int linenum)
 {
     command_t ret = (command_t) malloc(sizeof(struct command));
-    container->type = ERROR_COMMAND;
-    container->status = linenum;
+    ret->type = ERROR_COMMAND;
+    ret->status = linenum;
     return ret;
 }

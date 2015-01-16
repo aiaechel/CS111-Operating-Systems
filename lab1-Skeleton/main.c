@@ -80,8 +80,7 @@ main (int argc, char **argv)
     {
       if (print_tree)
 	{
-      if(command->type != ERROR_COMMAND)
-        printf ("# %d\n", command_number++);
+      printf ("# %d\n", command_number++);
 	  print_command (command);
 	}
       /*else

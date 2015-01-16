@@ -47,7 +47,7 @@ command_t complete_command(char* array, int beg, int end);
 command_t pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start);
 command_t subshell(char* array, int beg, int end);
 command_t format_command(char* array, int beg, int end);
-command_t make_error (int linenum);
+void make_error (int linenum);
 void find_semi_pipes(char* array, int beg, int end, int** semicolon, int** pipeline);
 
 //reads all chars in stream, sends everything to 
@@ -386,10 +386,7 @@ split_everything(char* array, int beg, int end)
             invalid = 1;        
         if(invalid)
         {
-            current = make_error(line_num);
-            command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
-            command_array[command_count++] = current;
-            command_array[command_count] = NULL;
+            make_error(line_num);
             return command_array;
         }
         if(num_endl == 2 && cur_char != ' ' && cur_char != '\t')
@@ -398,10 +395,7 @@ split_everything(char* array, int beg, int end)
             in_command = 0;
             if(num_parens)
             {
-                current = make_error(line_num);
-                command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
-                command_array[command_count++] = current;
-                command_array[command_count] = NULL;
+                make_error(line_num);
                 return command_array;
             }
             current = complete_command(array, command_start, command_end);
@@ -426,10 +420,7 @@ split_everything(char* array, int beg, int end)
         {
             if(prev_rel_char == '|' || prev_rel_char == '<' || prev_rel_char == '>' || num_parens || compound_count[0])
             {
-                current = make_error(line_num);
-                command_array = (command_t*) checked_realloc(command_array, sizeof(command_t)*(command_count + 2));
-                command_array[command_count++] = current;
-                command_array[command_count] = NULL;
+                make_error(line_num);
                 return command_array;
             }
         }
@@ -1093,11 +1084,8 @@ free_stream(command_stream_t c)
     free(c);
 }
 //If not work or unexpected output, don't need to return command_t anymore; just print syntax error, and return from split everything
-command_t
+void
 make_error (int linenum)
 {
-    command_t ret = (command_t) malloc(sizeof(struct command));
-    ret->type = ERROR_COMMAND;
-    ret->status = linenum;
-    return ret;
+    fprintf(stderr, "%d: Syntax error found!", linenum);
 }

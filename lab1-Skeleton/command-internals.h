@@ -24,7 +24,6 @@ enum command_type
     SUBSHELL_COMMAND,    // ( A )
     UNTIL_COMMAND,	 // until A do B done
     WHILE_COMMAND,	 // while A do B done
-    ERROR_COMMAND,
   };
 
 // Data associated with a command.

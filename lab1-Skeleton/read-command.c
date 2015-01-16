@@ -474,27 +474,31 @@ format_function (char* array, int beg, int end, command_t reserved)
     {
         ret->input = remove_whitespace(array, less + 1, greater - 1);
     }
+    else
+      ret->input = NULL;
     if(greater < end + 1)
     {
         ret->output = remove_whitespace(array, greater + 1, end);
     }
+    else
+      ret->output = NULL;
     return ret;
 }
 
 command_t
 compound_cmd(char* array, int beg, int end)
 {
-  int word_beg, word_end = 0; int index = 0; int stop = end;
-  int if_num, fi_num = 0;
-  int while_num, until_num = 0;
+  int word_beg, word_end = 0; int index = beg; int stop = end;
+  int if_num = 0;
+  int uwhile_num = 0;
 
-  int first_if = 0;
+  int first_if = beg;
   int first_then = -1;
   int first_else = -1;
 
-  int first_while = 0;
+  int first_while = beg;
   int first_do = -1;
-  int first_until = 0;
+  int first_until = beg;
 
   int type = 0;
   int reserved = 0;
@@ -521,6 +525,7 @@ compound_cmd(char* array, int beg, int end)
           word_end = stop;
           read_word(array, &word_beg, &word_end);
           reserved = check_reserved_word(array, word_beg, word_end);
+
           if(reserved == 1) //if
             {
               if_num++;
@@ -540,6 +545,7 @@ compound_cmd(char* array, int beg, int end)
                 first_else = word_beg;
             }
           index = word_end + 1;
+
         }
 if(first_else == -1)
         {
@@ -567,12 +573,12 @@ if(first_else == -1)
     {
       if(type == 5)
         {
-          while_num = 1;
+          uwhile_num = 1;
           container->type = WHILE_COMMAND;
         }
       if(type == 8)
         {
-          until_num = 1;
+          uwhile_num = 1;
           container->type = UNTIL_COMMAND;
         }
       index = word_beg + 5;
@@ -582,31 +588,21 @@ if(first_else == -1)
           word_end = stop;
           read_word(array, &word_beg, &word_end);
           reserved = check_reserved_word(array, word_beg, word_end);
-          if(type == 5 && reserved == 5) //while
+
+          if(reserved == 5 || reserved == 8) //while
             {
-              while_num++;
-            }
-          else if(type == 8 && reserved == 8) //until
-            {
-              until_num++;
+              uwhile_num++;
             }
           else if(reserved ==  6) //do
             {
-              if(type == 5 && while_num == 1)
-                {
-                  first_do = word_beg;
-                }
-              else if(type == 8 && until_num == 1)
+              if(uwhile_num == 1)
                 {
                   first_do = word_beg;
                 }
             }
           else if (reserved == 7) //done
             {
-              if(type == 5)
-                while_num--;
-              else if(type == 8)
-                until_num--;
+              uwhile_num--;
             }
           index = word_end + 1;
         }
@@ -621,13 +617,14 @@ if(first_else == -1)
         }
       if (type == 8) //until
         {
-          container->u.command[0] = complete_command(array, first_while + 5, first_do - 1);
+          container->u.command[0] = complete_command(array, first_until + 5, first_do - 1);
           container->u.command[1] = complete_command(array, first_do + 2, end - 1);
           container->u.command[2] = NULL;
             // printf("This is indexes of until to do: %d & %d\n", first_until + 5, first_do - 1);
             // printf("This is indexes of do to done: %d & %d\n", first_do + 2, first_done - 1);
         }
     }
+  return container;
 }
 
 command_t
@@ -744,7 +741,7 @@ format_command(char* array, int beg, int end)
     splitter = read_word(array, &word_beg, &word_end);
     reserve = check_reserved_word(array, word_beg, word_end);
 	command_t sub_command = NULL, container = NULL;
-	
+
 	int index = word_end + 1;
 	int if_num = -1;
 	int uwhile_num = -1;
@@ -756,14 +753,14 @@ format_command(char* array, int beg, int end)
 		if(reserve == 1)
 		{
 			if_num = 1;
-			while(index != end + 1)
+			while(index <= end)
 			{
 			  word_end = end;
 				read_word(array, &index, &word_end);
 				type = check_reserved_word(array, index, word_end);
 				if (type == 1) //if
 					if_num++;
-				if (type == 4)
+				else if (type == 4)
 				{
 					if_num--;
 					if(if_num == 0)
@@ -773,25 +770,21 @@ format_command(char* array, int beg, int end)
 					}
 				}
 				index = word_end + 1;
+				
 			}
 		}
 		if(reserve == 5 || reserve == 8)
 		{
-			if(reserve == 5)
-				while_yes = 1; //while_yes is 1 when it's a while command
 			uwhile_num = 1;
-			while(index != end + 1)
+			while(index <=  end)
 			{
 			  word_end = end;
 				read_word(array, &index, &word_end);
 				type = check_reserved_word(array, index, word_end);
-				if (type == 5 && while_yes == 1)
+
+				if (type == 5 || type == 8)
 					uwhile_num++;
-				if (type == 8 && while_yes == 0)
-				{
-					uwhile_num++;
-				}
-				if(type == 7) //done
+				else if(type == 7) //done
 				{
 					uwhile_num--;
 					if(uwhile_num == 0)
@@ -800,6 +793,7 @@ format_command(char* array, int beg, int end)
 						break;
 					}	
 				}
+
 				index = word_end + 1;
 			}
 		}
@@ -1111,4 +1105,5 @@ void
 make_error (int linenum)
 {
     fprintf(stderr, "%d: Syntax error found!", linenum);
+    exit(1);
 }

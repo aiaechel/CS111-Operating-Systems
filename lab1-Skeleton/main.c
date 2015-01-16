@@ -91,5 +91,5 @@ main (int argc, char **argv)
     }
   free_stream(command_stream);
   fclose(script_stream);
-  return print_tree;// || !last_command ? 0 : command_status (last_command);
+  return print_tree || !last_command ? 0 : command_status (last_command);
 }

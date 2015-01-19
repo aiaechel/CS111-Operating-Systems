@@ -14,23 +14,26 @@ void run_child(void);
 void
 start(void)
 {
-  	volatile int checker = 0; /* This variable checks that you correctly
-				     			     gave the child process a new stack. */
-	/*	int x = 0;
+      volatile int checker = 0;
+ /* This variable checks that you correctly
+   gave the child process a new stack. */
+  /*	int x = 0;
 	//YOUR CODE HERE
-	
+	x = 10;
+	int* volatile ptr = &x;
 	pid_t p = sys_fork();
 	if(p == 0)
 	  {
 	    //YOUR CODE HERE
-	    
+	    *ptr = 11;
+ 	    sys_exit(0);
 	  }
 	else if(p > 0)
 	  sys_wait(p);
 	app_printf("%d", x);
 	sys_exit(0);
-	*/
-	pid_t p;
+  */	
+      	pid_t p;
 	int status;
 
 	app_printf("About to start a new process...\n");
@@ -54,10 +57,12 @@ start(void)
 		} else
 			sys_exit(0);
 
-	} else {
-		app_printf("Error!\n");
-		sys_exit(1);
-		}
+	} 
+	else 
+	{
+	    app_printf("Error!\n");
+	    sys_exit(1);
+	}
 }
 
 void

@@ -19,3 +19,26 @@ Exercise 4:
 I modified the implementation of the INT_SYS_WAIT implementation of interrupt() to solve this bug. The bug was that processes were not being reset to a state of P_EMPTY when we called sys_wait() on exited processes. This caused the program to skip over these processes when it was looking for more space to place more processes. To rectify this problem, I modified the case where p_state of the requested process was P_ZOMBIE. I added a line of code that set p_state of the requested process to P_EMPTY, so the system knows that it can place a new process in that space.
 
 Extra credit exercises:
+
+Exercise 5:
+Here is the code I wrote that would print 11 in MiniprocOS but 10 in a system with correct process isolation:
+void start(void) {
+   int x = 0; //note that local variable x lives on the stack
+   //YOUR CODE HERE
+   x = 10;
+   int* volatile ptr = &x;
+   pid_t p = sys_fork();
+   if(p == 0)
+   {
+     //YOUR CODE HERE
+      *ptr = 11;
+      sys_exit(0);
+   }
+   else if(p > 0)
+       sys_wait(p); //assume blocking implementation
+   app_printf("%d", x);
+   sys_exit(0);
+}
+
+As you can see here, I first set the value of x to 10, then make a volatile int pointer that points to the location of x. Then in the child process, I set the value that the pointer is pointing to to 11 and exit. Finally, the main process prints out the value of x, which in the case of MiniprocOS, is 11. I tested this same program, but with the actual system calls, on the SEASnet Linux server, and the program printed 10 as the value of x.
+

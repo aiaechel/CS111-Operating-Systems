@@ -75,6 +75,7 @@ start(void)
 	memset(proc_array, 0, sizeof(proc_array));
 	for (i = 0; i < NPROCS; i++) {
 		proc_array[i].p_pid = i;
+		proc_array[i].p_wait = 0;
 		proc_array[i].p_state = P_EMPTY;
 	}
 
@@ -170,6 +171,11 @@ interrupt(registers_t *reg)
 		// for this register out of 'current->p_registers'.
 		current->p_state = P_ZOMBIE;
 		current->p_exit_status = current->p_registers.reg_eax;
+		if(current->p_wait)
+		  {
+		    proc_array[current->p_wait].p_state = P_RUNNABLE;
+		    current->p_wait = 0;
+		  }
 		schedule();
 
 	case INT_SYS_WAIT: {
@@ -187,9 +193,16 @@ interrupt(registers_t *reg)
 		    || proc_array[p].p_state == P_EMPTY)
 			current->p_registers.reg_eax = -1;
 		else if (proc_array[p].p_state == P_ZOMBIE)
+		  {
 			current->p_registers.reg_eax = proc_array[p].p_exit_status;
+			proc_array[p].p_state = P_EMPTY;
+		  }
 		else
-			current->p_registers.reg_eax = WAIT_TRYAGAIN;
+		  {
+		    current->p_state = P_BLOCKED;
+		    proc_array[p].p_wait = current->p_pid;
+		  }
+		  //current->p_registers.reg_eax = WAIT_TRYAGAIN;
 		schedule();
 	}
 
@@ -239,8 +252,19 @@ do_fork(process_t *parent)
 	//                What should sys_fork() return to the child process?)
 	// You need to set one other process descriptor field as well.
 	// Finally, return the child's process ID to the parent.
-
-	return -1;
+  	int pid;
+	for(pid = 1; pid < NPROCS; pid++)
+	  {
+	    if(proc_array[pid].p_state == P_EMPTY)
+	      break;
+	  }
+	if(pid == NPROCS)
+	  return -1;
+	proc_array[pid].p_registers = parent->p_registers;
+	proc_array[pid].p_registers.reg_eax = 0;
+	proc_array[pid].p_state = P_RUNNABLE;
+	copy_stack(&proc_array[pid], parent);
+	return proc_array[pid].p_pid;
 }
 
 static void
@@ -277,7 +301,9 @@ copy_stack(process_t *dest, process_t *src)
 	//    src->p_registers.reg_esp   dest->p_registers.reg_esp
 	//         == 0x29A4CC           == 0x2DA4CC
 	//                               == 0x300000 + (0x29A4CC - 0x2C0000)
-
+	// stack_top = 0x280000 + pid * 0x40000 (both src and dest)
+	// stack_bottom_src = src->p_registers.reg_esp
+	// stack_bottom_dest = stack_top_dest + (stack_bottom_src - stack_top_src)
 	// You may implement this however you like, but we found it easiest
 	// to express with variables that locate the bottom and top of each
 	// stack.  In our examples, the variables would equal:
@@ -298,12 +324,13 @@ copy_stack(process_t *dest, process_t *src)
 
 	// YOUR CODE HERE!
 
-	src_stack_top = 0 /* YOUR CODE HERE */;
+	src_stack_top = PROC1_STACK_ADDR + src->p_pid*PROC_STACK_SIZE;
 	src_stack_bottom = src->p_registers.reg_esp;
-	dest_stack_top = 0 /* YOUR CODE HERE */;
-	dest_stack_bottom = 0 /* YOUR CODE HERE: calculate based on the
-				 other variables */;
+	dest_stack_top = PROC1_STACK_ADDR + dest->p_pid*PROC_STACK_SIZE;
+	dest_stack_bottom = dest_stack_top - (src_stack_top-src_stack_bottom);
 	// YOUR CODE HERE: memcpy the stack and set dest->p_registers.reg_esp
+	dest->p_registers.reg_esp = dest_stack_bottom;
+	memcpy((void*) dest_stack_bottom, (void*) src_stack_bottom, src_stack_top - src_stack_bottom);
 }
 
 

@@ -1,16 +1,21 @@
-Name:
-UCLA ID:
+Name: Andrew Lee
+UCLA ID: 204-304-351
 
-Collaborators:
+Collaborators: None
 
 -------------------------------------------------------------------------------
 
 Response to Exercise 1:
+If the run(current) call is replaced with a schedule() call in sys_getpid(), the call to sys_getpid() should still return the correct value. The schedule function simply runs the next runnable process in the proc_array after the current process. When the program is first interrupted, the system saves the register values at that moment to the process's p_registers variable. For sys_getpid(), the interrupt() call then changes the saved %eax value in the current process_t to its pid. The run function reloads these saved register values into the system registers and continues the process from after it was interrupted. Because of this, even if schedule() executes other processes and changes the system's %eax register before returning to sys_getpid(), the run() function loads the saved register values into the system registers, allowing the sys_getpid() call to return the same value either way.
 
-
+The only way to have the schedule() cause sys_getpid() to return differently is to have a process after current process modify the current process's saved %eax value to something incorrect.
 
 Anything else you'd like us to know:
 
+Exercise 3:
+Like the spec recommended, I added another field to the process_t struct: "pid_t p_wait", which is set to the pid of another process that is waiting for this process to finish. In the interrupt function, I changed the INT_SYS_WAIT implementation so if the requested process had not exited yet, I set the state of the current process to P_BLOCKED and p_wait of the requested process to the pid of the current process. In INT_SYS_EXIT, I checked p_wait to see if there was any other process waiting for the current process to exit. If there was, I set the state of that process to P_RUNNABLE and reset the current state's p_wait to 0.
 
+Exercise 4:
+I modified the implementation of the INT_SYS_WAIT implementation of interrupt() to solve this bug. The bug was that processes were not being reset to a state of P_EMPTY when we called sys_wait() on exited processes. This caused the program to skip over these processes when it was looking for more space to place more processes. To rectify this problem, I modified the case where p_state of the requested process was P_ZOMBIE. I added a line of code that set p_state of the requested process to P_EMPTY, so the system knows that it can place a new process in that space.
 
 Extra credit exercises:

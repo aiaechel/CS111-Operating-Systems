@@ -154,7 +154,26 @@ interrupt(registers_t *reg)
 		// You will have to complete the do_fork() function!
 		current->p_registers.reg_eax = do_fork(current);
 		run(current);
-
+	case INT_SYS_NEWTHREAD: {
+                int pid;
+		uint32_t stack_top;
+		for(pid = 1; pid < NPROCS; pid++)
+		  {
+		    if(proc_array[pid].p_state == P_EMPTY)
+		      break;
+		  }
+		if(pid < NPROCS)
+		  {
+		    proc_array[pid].p_state = P_RUNNABLE;
+		    stack_top = PROC1_STACK_ADDR + pid*PROC_STACK_SIZE;
+		    memset((void*) stack_top - PROC_STACK_SIZE, 0, PROC_STACK_SIZE);
+		    special_registers_init(&proc_array[pid]);
+		    proc_array[pid].p_registers.reg_eip = current->p_registers.reg_eax;
+		    proc_array[pid].p_registers.reg_esp = stack_top;
+		    current->p_registers.reg_eax = pid;
+		    run(current);
+		  }
+	}
 	case INT_SYS_YIELD:
 		// The 'sys_yield' system call asks the kernel to schedule a
 		// different process.  (MiniprocOS is cooperatively
@@ -162,22 +181,41 @@ interrupt(registers_t *reg)
 		// The schedule() function picks another process and runs it.
 		schedule();
 
-	case INT_SYS_EXIT:
+	case INT_SYS_EXIT: {
 		// 'sys_exit' exits the current process, which is marked as
 		// non-runnable.
 		// The process stored its exit status in the %eax register
 		// before calling the system call.  The %eax REGISTER has
 		// changed by now, but we can read the APPLICATION's setting
 		// for this register out of 'current->p_registers'.
+		pid_t wait = current->p_wait;
 		current->p_state = P_ZOMBIE;
 		current->p_exit_status = current->p_registers.reg_eax;
-		if(current->p_wait)
+		if(wait)
 		  {
-		    proc_array[current->p_wait].p_state = P_RUNNABLE;
+		    proc_array[wait].p_state = P_RUNNABLE;
 		    current->p_wait = 0;
 		  }
 		schedule();
-
+}
+	case INT_SYS_KILL: {
+         	pid_t pid = current->p_registers.reg_eax;
+		pid_t wait = proc_array[pid].p_wait;
+		if(pid < NPROCS && pid > 0 && proc_array[pid].p_state != P_EMPTY)
+		  {
+		    proc_array[pid].p_state = P_ZOMBIE;
+		    proc_array[pid].p_exit_status = 5;
+		    if(wait)
+		      {
+			proc_array[wait].p_state = P_RUNNABLE;
+			proc_array[pid].p_wait = 0;
+      		      }
+		  }
+		if(pid != current->p_pid)
+			run(current);
+		else
+			schedule();
+	}
 	case INT_SYS_WAIT: {
 		// 'sys_wait' is called to retrieve a process's exit status.
 		// It's an error to call sys_wait for:
@@ -187,7 +225,6 @@ interrupt(registers_t *reg)
 		// (In the Unix operating system, only process P's parent
 		// can call sys_wait(P).  In MiniprocOS, we allow ANY
 		// process to call sys_wait(P).)
-
 		pid_t p = current->p_registers.reg_eax;
 		if (p <= 0 || p >= NPROCS || p == current->p_pid
 		    || proc_array[p].p_state == P_EMPTY)
@@ -203,7 +240,7 @@ interrupt(registers_t *reg)
 		    proc_array[p].p_wait = current->p_pid;
 		  }
 		  //current->p_registers.reg_eax = WAIT_TRYAGAIN;
-		schedule();
+		    schedule();
 	}
 
 	default:

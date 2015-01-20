@@ -78,7 +78,22 @@ sys_fork(void)
 		     : "cc", "memory");
 	return result;
 }
+/****************************************************************************
+ *sys_newthread
 
+ ****************************************************************************/
+
+static inline pid_t
+sys_newthread(void (*start_function)(void))
+{
+	pid_t ret;
+	asm volatile("int %1\n"
+		:"=a" (ret)
+		:"i" (INT_SYS_NEWTHREAD),
+		 "a" (start_function)
+		:"cc", "memory");
+	return ret;
+}
 
 /*****************************************************************************
  * sys_yield
@@ -134,6 +149,21 @@ sys_exit(int status)
  loop:	goto loop; /* will not be reached */
 }
 
+/*****************************************************************************
+ *sys_kill
+
+ *****************************************************************************/
+
+static inline void
+sys_kill(pid_t process)
+{
+  	asm volatile("int %0\n"
+		     :
+		     : "i" (INT_SYS_KILL),
+		       "a" (process)
+		     : "cc", "memory");
+
+}
 
 /*****************************************************************************
  * sys_wait(pid)

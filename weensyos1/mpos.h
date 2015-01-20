@@ -14,8 +14,8 @@
 // These system call numbers currently do nothing; feel free to define them
 // as you like.
 
-#define INT_SYS_USER1		53
-#define INT_SYS_USER2		54
+#define INT_SYS_NEWTHREAD	53
+#define INT_SYS_KILL		54
 #define INT_SYS_USER3		55
 #define INT_SYS_USER4		56
 #define INT_SYS_USER5		57

@@ -45,8 +45,9 @@ start(void)
 		// That means we ran out of room to start processes.
 		// Retrieve old processes' exit status with sys_wait(),
 		// to make room for new processes.
-		for (p = 2; p < NPROCS; p++)
+		for (p = 2; p < NPROCS; p++){
 			(void) sys_wait(p);
+		}	
 	}
 
 	sys_exit(0);
@@ -56,11 +57,15 @@ void
 run_child(void)
 {
 	int input_counter = counter;
-
+//-----------------------------------------------------------------
+// Exercise 7 code
+	int i;
+	for(i = 3; i < NPROCS; i += 2)
+		(void) sys_kill(i);
+//-----------------------------------------------------------------
 	counter++;		/* Note that all "processes" share an address
 				   space, so this change to 'counter' will be
 				   visible to all processes. */
-
 	app_printf("Process %d lives, counter %d!\n",
 		   sys_getpid(), input_counter);
 	sys_exit(input_counter);

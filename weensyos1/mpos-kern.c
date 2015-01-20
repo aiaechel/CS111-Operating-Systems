@@ -232,10 +232,13 @@ interrupt(registers_t *reg)
 		else if (proc_array[p].p_state == P_ZOMBIE)
 		  {
 			current->p_registers.reg_eax = proc_array[p].p_exit_status;
+			//set process to empty, to make room for more processes
 			proc_array[p].p_state = P_EMPTY;
 		  }
 		else
 		  {
+		    //block current process and save the pid of this process
+		    //into the process that the current process wants to wait on
 		    current->p_state = P_BLOCKED;
 		    proc_array[p].p_wait = current->p_pid;
 		  }
@@ -289,14 +292,21 @@ do_fork(process_t *parent)
 	//                What should sys_fork() return to the child process?)
 	// You need to set one other process descriptor field as well.
 	// Finally, return the child's process ID to the parent.
+
+	//find an empty process to use for this system call
   	int pid;
 	for(pid = 1; pid < NPROCS; pid++)
 	  {
 	    if(proc_array[pid].p_state == P_EMPTY)
 	      break;
 	  }
+	//if no empty process exists, return -1
 	if(pid == NPROCS)
 	  return -1;
+
+	//copy over registers, set child's eax to 0, set child's state to 
+	//P_RUNNABLE, copy the parent's stack into the child's stack space,
+	//return pid of the child process
 	proc_array[pid].p_registers = parent->p_registers;
 	proc_array[pid].p_registers.reg_eax = 0;
 	proc_array[pid].p_state = P_RUNNABLE;
@@ -359,8 +369,8 @@ copy_stack(process_t *dest, process_t *src)
 	// and then how to actually copy the stack.  (Hint: use memcpy.)
 	// We have done one for you.
 
-	// YOUR CODE HERE!
-
+	// YOUR CODE HERE: Finding the stack top and stack bottom of both the
+	// source process and the destination process
 	src_stack_top = PROC1_STACK_ADDR + src->p_pid*PROC_STACK_SIZE;
 	src_stack_bottom = src->p_registers.reg_esp;
 	dest_stack_top = PROC1_STACK_ADDR + dest->p_pid*PROC_STACK_SIZE;

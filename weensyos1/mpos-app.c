@@ -17,7 +17,9 @@ start(void)
       volatile int checker = 0;
  /* This variable checks that you correctly
    gave the child process a new stack. */
-  /*	int x = 0;
+  /*	Code for exercise 5
+
+	int x = 0;
 	//YOUR CODE HERE
 	x = 10;
 	int* volatile ptr = &x;

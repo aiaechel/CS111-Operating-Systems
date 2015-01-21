@@ -1,0 +1,199 @@
+Name: Andrew Lee
+UCLA ID: 204-304-351
+
+Collaborators: None
+
+-------------------------------------------------------------------------------
+
+Response to Exercise 1:
+
+If the run(current) call is replaced with a schedule() call in sys_getpid(), 
+the call to sys_getpid() should still return the correct value. The schedule 
+function simply runs the next runnable process in the proc_array after the 
+current process. When the program is first interrupted, the system saves the 
+register values at that moment to the process's p_registers variable. 
+For sys_getpid(), the interrupt() call then changes the saved %eax value in the
+current process_t to its pid. The run function reloads these saved register 
+values into the system registers and continues the process from after it was 
+interrupted. Because of this, even if schedule() executes other processes and 
+changes the system's %eax register before returning to sys_getpid(), the run() 
+function loads the saved register values into the system registers, allowing the
+sys_getpid() call to return the same value either way.
+
+The only way to have the schedule() cause sys_getpid() to return differently is
+to have a process after current process modify the current process's saved %eax
+value to something incorrect.
+
+Anything else you'd like us to know:
+
+Exercise 2:
+See code for do_fork() and copy_stack() in mpos-kern.c
+
+Exercise 3:
+Like the spec recommended, I added another field to the process_t struct in 
+mpos-kern.h: "pid_t p_wait", which is set to the pid of another process that is
+waiting for this process to finish. In start() in mpos-kern.c, I made sure to 
+initialize each process's p_wait to 0. In the interrupt function in mpos-kern.c,
+I changed the INT_SYS_WAIT implementation so if the requested process had not 
+exited yet, I set the state of the current process to P_BLOCKED and p_wait of 
+the requested process to the pid of the current process. In INT_SYS_EXIT, 
+I checked p_wait to see if there was any other process waiting for the current 
+process to exit. If there was, I set the state of that process to P_RUNNABLE 
+and reset the current process's p_wait to 0.
+
+This code is located in mpos-kern.c
+
+Exercise 4:
+I modified the implementation of the INT_SYS_WAIT implementation of interrupt()
+to solve this bug. The bug was that processes were not being reset to a state of
+P_EMPTY when we called sys_wait() on exited processes. This caused the program 
+to skip over these processes when it was looking for more space to place more 
+processes. To rectify this problem, I modified the case where p_state of the 
+requested process was P_ZOMBIE. I added a line of code that set p_state of the 
+requested process to P_EMPTY, so the system knows that it can place a new 
+process in that space.
+
+Extra credit exercises:
+
+Exercise 5:
+Here is the code I wrote that would print 11 in MiniprocOS but 10 in a system 
+with correct process isolation:
+void start(void) {
+   int x = 0; //note that local variable x lives on the stack
+   //YOUR CODE HERE
+   x = 10;
+   int* volatile ptr = &x;
+   pid_t p = sys_fork();
+   if(p == 0)
+   {
+     //YOUR CODE HERE
+      *ptr = 11;
+      sys_exit(0);
+   }
+   else if(p > 0)
+       sys_wait(p); //assume blocking implementation
+   app_printf("%d", x);
+   sys_exit(0);
+}
+
+As you can see here, I first set the value of x to 10, then make a volatile int
+pointer that points to the location of x. Then in the child process, I set the 
+value that the pointer is pointing to to 11 and exit. Finally, the main process
+prints out the value of x, which in the case of MiniprocOS, is 11. I tested this
+same program, but with the actual system calls on the SEASnet Linux server, and
+the program printed 10 to the console.
+
+Exercise 6:
+
+I first defined the INT_SYS_NEWTHREAD constant in mpos.h. Then I defined the 
+sys_newthread function in mpos-app.h as follows:
+
+static inline pid_t
+sys_newthread(void (*start_function)(void))
+{
+	pid_t ret;
+	asm volatile("int %1\n"
+		:"=a" (ret)
+		:"i" (INT_SYS_NEWTHREAD),
+		 "a" (start_function)
+		:"cc", "memory");
+	return ret;
+}
+
+I then defined the case for INT_SYS_NEWTHREAD in mpos-kern.c, as follows:
+
+case INT_SYS_NEWTHREAD: {
+      int pid;
+      uint32_t stack_top;
+      for(pid = 1; pid < NPROCS; pid++)
+       {
+          if(proc_array[pid].p_state == P_EMPTY)
+	       break;
+       }
+       if(pid < NPROCS)
+         {
+	     proc_array[pid].p_state = P_RUNNABLE;
+	     stack_top = PROC1_STACK_ADDR + pid*PROC_STACK_SIZE;
+	     memset((void*) stack_top - PROC_STACK_SIZE, 0, PROC_STACK_SIZE);
+	     special_registers_init(&proc_array[pid]);
+	     proc_array[pid].p_registers.reg_eip = current->p_registers.reg_eax;
+	     proc_array[pid].p_registers.reg_esp = stack_top;
+	     current->p_registers.reg_eax = pid;
+	 }
+       run(current);
+}
+
+Here, I find an empty process and set it to P_RUNNABLE. Then I initialize the 
+new process's stack to all 0's and initialize the new process's registers. 
+Finally, I set the new process's eip to the input function, esp to the top of 
+the new stack, and the return value to pid, before returning to the current 
+process.
+
+Exercise 7:
+
+I first defined the INT_SYS_KILL constant in mpos.h. Then I made the 
+sys_kill(pid) function in mpos-app.h, as follows:
+
+static inline void
+sys_kill(pid_t process)
+{
+	asm volatile("int %0\n"
+	     :
+	     : "i" (INT_SYS_KILL),
+	       "a" (process)
+	     : "cc", "memory");
+}
+
+Then I defined the case for INT_SYS_KILL in the interrupt function in 
+mpos-kern.c, as follows:
+
+case INT_SYS_KILL: {
+     pid_t pid = current->p_registers.reg_eax;
+     pid_t wait = proc_array[pid].p_wait;
+     if(pid < NPROCS && pid > 0 && proc_array[pid].p_state != P_EMPTY)
+     {
+	proc_array[pid].p_state = P_ZOMBIE;
+	proc_array[pid].p_exit_status = 5;
+	if(wait)
+	{
+	   proc_array[wait].p_state = P_RUNNABLE;
+	   proc_array[pid].p_wait = 0;
+      	}
+     }
+     if(pid != current->p_pid)
+	run(current);
+     else
+	schedule();
+}
+
+I do pretty much the same thing as sys_exit() here, except I can make any 
+process exit. I also put in a check to see if the current process called 
+sys_kill on itself. If yes, then I exit the process and call schedule(). 
+If not, I exit the selected process and return to the current process.
+
+Here is my changed run_child() from mpos-app2.c:
+
+void
+run_child(void)
+{
+	int input_counter = counter;
+//-------------------------------------------------------------
+// Exercise 7 code
+	int i;
+	for(i = 3; i < NPROCS; i += 2)
+		(void) sys_kill(i);
+//-------------------------------------------------------------
+	counter++;		/* Note that all "processes" share an address
+				   space, so this change to 'counter' will be
+				   visible to all processes. */
+	app_printf("Process %d lives, counter %d!\n",
+		   sys_getpid(), input_counter);
+	sys_exit(input_counter);
+}
+
+All I did was place a for loop before the counter increment to kill all odd 
+numbered processes. If I placed the for loop after the counter increment, then I
+found that the count would be thrown off, due to a process 3 being able to run. 
+
+In mpos-app2.c, this segment is not commented out, in case the expected output 
+for exercise 4 is incorrect.

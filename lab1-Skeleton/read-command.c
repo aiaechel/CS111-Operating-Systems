@@ -42,10 +42,8 @@ void free_stream(command_stream_t c);
 void free_command(command_t c);
 command_t* split_everything(char* array, int beg, int end);
 command_t format_function (char* array, int beg, int end, command_t reserved);
-command_t compound_cmd(char* array, int beg, int end);
 command_t complete_command(char* array, int beg, int end);
 command_t pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start);
-command_t subshell(char* array, int beg, int end);
 command_t format_command(char* array, int beg, int end);
 void make_error (int linenum, char* everything, command_t* command_array);
 void find_semi_pipes(char* array, int beg, int end, int flag, int** semicolon, int** pipeline);
@@ -442,7 +440,8 @@ split_everything(char* array, int beg, int end)
 command_t
 format_function (char* array, int beg, int end, command_t reserved)
 {
-    int index = beg, less = end + 1, greater = end + 1;
+    int index = beg, less = end + 1, greater = end + 1, num_words = 0;
+    char prev_char = 0;
     while (index < end + 1)
     {
         if(array[index] == '<')
@@ -460,9 +459,28 @@ format_function (char* array, int beg, int end, command_t reserved)
     else
     {
         ret = (command_t) checked_malloc(sizeof(struct command));
-        ret->u.word = (char**) checked_malloc(sizeof(char*) * 2);
-        ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1));
-        ret->u.word[1] = NULL;
+        ret->u.word = (char**) checked_malloc(sizeof(char*) * (num_words + 1));
+        index = beg;
+        ret->u.word[0] = NULL;
+	while(index < greater && index < less)
+	{
+	  if(array[index] == ' ' || prev_char == '\t' || index == greater - 1 || index == less - 1)
+	    {
+	      //	      if(prev_char == ' ' || prev_char == '\t')
+		
+	       if(check_char(prev_char, 0) || index == greater - 1 || index == less - 1)
+		{
+		  ret->u.word = (char**) checked_realloc(ret->u.word, sizeof(char*)*(num_words + 2));
+  		  ret->u.word[num_words++] = remove_whitespace(array, beg, index);
+                  ret->u.word[num_words] = NULL;
+		  beg = index;
+		  
+		}
+	    }
+	  prev_char = array[index++];
+	}
+//      ret->u.word[0] = remove_whitespace(array, beg, (less < end + 1 ? less - 1 : greater - 1));
+//        ret->u.word[1] = NULL;
         ret->type = SIMPLE_COMMAND;
         ret->status = -1;
     }
@@ -479,148 +497,6 @@ format_function (char* array, int beg, int end, command_t reserved)
     else
       ret->output = NULL;
     return ret;
-}
-
-command_t
-compound_cmd(char* array, int beg, int end)
-{
-  int word_beg, word_end = 0; int index = beg; int stop = end;
-  int if_num = 0;
-  int uwhile_num = 0;
-
-  int first_if = beg;
-  int first_then = -1;
-  int first_else = -1;
-
-  int first_while = beg;
-  int first_do = -1;
-  int first_until = beg;
-
-  int type = 0;
-  int reserved = 0;
-
-  command_t container = NULL;
-
-  //this part is getting the type of command
-  word_beg = index;
-  word_end = stop;
-  read_word(array, &word_beg, &word_end);
-  type = check_reserved_word(array, word_beg, word_end);
-
-  container = (command_t)checked_malloc(sizeof(struct command));
-  container->status = -1;
-
-  if(type == 1) //if statement
-    {
-      index = word_beg + 2;
-      if_num = 1;
-      container->type = IF_COMMAND;
-      while(index <= stop)
-        {
-          word_beg = index;
-          word_end = stop;
-          read_word(array, &word_beg, &word_end);
-          reserved = check_reserved_word(array, word_beg, word_end);
-
-          if(reserved == 1) //if
-            {
-              if_num++;
-            }
-          else if(reserved == 4) //fi
-            {
-              if_num--;
-            }
-          else if(reserved == 2) //then
-            {
-              if(if_num == 1)
-                first_then = word_beg;
-            }
-          else if (reserved == 3) //else
-            {
-              if(if_num == 1)
-                first_else = word_beg;
-            }
-          index = word_end + 1;
-
-        }
-if(first_else == -1)
-        {
-          // printf("This is indexes of if to then: %d & %d\n", first_if + 2, first_then - 1);
-          // printf("This is indexes of then to fi: %d & %d\n", first_then + 4, first_fi - 1);
-          // printf("This should be 2 to 4 and then 9 to 12\n");
-		  
-		  container->u.command[0] = complete_command(array, first_if + 2, first_then - 1);
-		  container->u.command[1] = complete_command(array, first_then + 4, end - 1);
-		  container->u.command[2] = NULL;
-        }
-      else
-        {
-          // printf("This is indexes of if to then: %d & %d\n", first_if + 2, first_then - 1);
-          // printf("This is indexes of then to fi: %d & %d\n", first_then + 4, first_else - 1);
-          // printf("This is indexes of if to then: %d & %d\n", first_else + 4, first_fi - 1);
-          // printf("This should be 2 to 4, 9 to 11, 16 to 18\n");
-		  
-		  container->u.command[0] = complete_command(array, first_if + 2, first_then - 1);
-		  container->u.command[1] = complete_command(array, first_then + 4, first_else - 1);
-		  container->u.command[2] = complete_command(array, first_else + 4, end - 1);
-        }
-    }
-  if(type == 5 || type == 8)
-    {
-      if(type == 5)
-        {
-          uwhile_num = 1;
-          container->type = WHILE_COMMAND;
-        }
-      if(type == 8)
-        {
-          uwhile_num = 1;
-          container->type = UNTIL_COMMAND;
-        }
-      index = word_beg + 5;
-      while(index <= stop)
-{
-          word_beg = index;
-          word_end = stop;
-          read_word(array, &word_beg, &word_end);
-          reserved = check_reserved_word(array, word_beg, word_end);
-
-          if(reserved == 5 || reserved == 8) //while
-            {
-              uwhile_num++;
-            }
-          else if(reserved ==  6) //do
-            {
-              if(uwhile_num == 1)
-                {
-                  first_do = word_beg;
-                }
-            }
-          else if (reserved == 7) //done
-            {
-              uwhile_num--;
-            }
-          index = word_end + 1;
-        }
-      if(type == 5) //while
-        {
-			container->u.command[0] = complete_command(array, first_while + 5, first_do - 1);
-            container->u.command[1] = complete_command(array, first_do + 2, end - 1);
-            container->u.command[2] = NULL;
-          // printf("This is indexes of while to do: %d & %d\n", first_while + 5, first_do - 1);
-          // printf("This is indexes of do to done: %d & %d\n", first_do + 2, first_done - 1);
-          // printf("This should be 5 to 7, 10 to 12\n");
-        }
-      if (type == 8) //until
-        {
-          container->u.command[0] = complete_command(array, first_until + 5, first_do - 1);
-          container->u.command[1] = complete_command(array, first_do + 2, end - 1);
-          container->u.command[2] = NULL;
-            // printf("This is indexes of until to do: %d & %d\n", first_until + 5, first_do - 1);
-            // printf("This is indexes of do to done: %d & %d\n", first_do + 2, first_done - 1);
-        }
-    }
-  return container;
 }
 
 command_t
@@ -663,7 +539,8 @@ complete_command(char* array, int beg, int end)
             container->status = -1;
             container->u.command[0] = c0;
             container->u.command[1] = current;
-        
+	    container->input = NULL;
+	    container->output = NULL;
         }
         i++;
     }
@@ -706,23 +583,13 @@ pipe_command(char* array, int beg, int end, int* pipe_locations, int pipe_start)
             container->status = -1;
             container->u.command[0] = c0;
             container->u.command[1] = current;
+	    container->input = NULL;
+	    container->output = NULL;
         }
         i++;
     }
     if(container == NULL)
         container = format_command(array, beg, end);
-    return container;
-}
-
-command_t 
-subshell(char* array, int beg, int end)
-{
-    command_t inside, container;
-    inside = complete_command(array, beg, end);
-    container = (command_t) checked_malloc(sizeof(struct command));
-    container->type = SUBSHELL_COMMAND;
-    container->status = -1;
-    container->u.command[0] = inside;
     return container;
 }
 
@@ -774,54 +641,6 @@ format_command(char* array, int beg, int end)
                 break;
         }
 	word_beg = word_end;
-		/*if(reserve == 1)
-		{
-			if_num = 1;
-			while(index <= end)
-			{
-			  word_end = end;
-				read_word(array, &index, &word_end);
-				type = check_reserved_word(array, index, word_end);
-				if (type == 1) //if
-					if_num++;
-				else if (type == 4)
-				{
-					if_num--;
-					if(if_num == 0)
-					{
-						stop = index;
-						break;
-					}
-				}
-				index = word_end + 1;
-				
-			}
-		}
-		if(reserve == 5 || reserve == 8)
-		{
-			uwhile_num = 1;
-			while(index <=  end)
-			{
-			  word_end = end;
-				read_word(array, &index, &word_end);
-				type = check_reserved_word(array, index, word_end);
-
-				if (type == 5 || type == 8)
-					uwhile_num++;
-				else if(type == 7) //done
-				{
-					uwhile_num--;
-					if(uwhile_num == 0)
-					{
-						stop = index;
-						break;
-					}	
-				}
-
-				index = word_end + 1;
-			}
-		}*/
-        
     }
     else if(splitter == '(')
     {
@@ -1196,12 +1015,18 @@ check_char(int a, int flag)
 void
 free_command(command_t c)
 {
+    int i = 0;
     if(c == NULL)
         return;
     switch (c->type)
     {
     case SIMPLE_COMMAND:
-        free(c->u.word[0]);
+      while(c->u.word[i] != NULL)
+	{
+	  free(c->u.word[i]);
+	  c->u.word[i++] = NULL;
+	}
+      //        free(c->u.word[0]);
         free(c->u.word);
 	if(c->input != NULL)
 	  free(c->input);

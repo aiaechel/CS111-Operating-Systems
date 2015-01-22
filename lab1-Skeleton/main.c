@@ -83,11 +83,11 @@ main (int argc, char **argv)
       printf ("# %d\n", command_number++);
 	  print_command (command);
 	}
-      /*else
+      else
 	{
 	  last_command = command;
 	  execute_command (command, profiling);
-	}*/
+	}
     }
   free_stream(command_stream);
   fclose(script_stream);

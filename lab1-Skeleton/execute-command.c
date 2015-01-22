@@ -18,6 +18,9 @@
 #include "command.h"
 #include "command-internals.h"
 
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -96,7 +99,8 @@ int do_command(command_t c)
 {
     int pipefd[2];
     pid_t child_pid;
-    int fds = {-1, -3, -3, -7};
+    int fds[4] = {-1, -3, -3, -7};
+    int exit_status;
     switch(c->type)
     {
         case SIMPLE_COMMAND:
@@ -105,12 +109,14 @@ int do_command(command_t c)
             {
                 set_redirect(c, fds);
                 execvp(c->u.word[0], c->u.word);
-                fprintf(stderr, "Failed to execute command!\n");
+                fprintf(stderr, "%s: command not found\n", c->u.word[0]);
                 exit(1);
+		reset_redirect(fds);
             }
             else if(child_pid > 0)
             {
-                waitpid(child_pid, &c->status, 0);
+                waitpid(child_pid, &exit_status, 0);
+		c->status = WEXITSTATUS(exit_status);
             }
             else
             {
@@ -119,7 +125,7 @@ int do_command(command_t c)
                 //some error here
             }
             break;
-        case SEQUENCE COMMAND:
+        case SEQUENCE_COMMAND:
             do_command(c->u.command[0]);
             c->status = do_command(c->u.command[1]);
             break;
@@ -136,22 +142,22 @@ int do_command(command_t c)
             }
             child_pid = fork();
             if(child_pid == 0)
-            {     
+            {
                 dup2(pipefd[1], 1);
+		close(pipefd[0]);
                 do_command(c->u.command[0]);
                 close(pipefd[1]);
-                close(pipefd[0]);
                 close(1);
                 exit(0);
             }
             else if(child_pid > 0)
             {
                 fds[0] = dup(0);
+		close(pipefd[1]);
                 dup2(pipefd[0], 0);
                 c->status = do_command(c->u.command[1]);
                 dup2(fds[0], 0);
-                close(pipefd[0]);
-                close(pipefd[1]);
+                close(pipefd[0]);                
                 close(fds[0]);
             }
             else

@@ -70,7 +70,9 @@ for bad in \
   '(a|b' \
   'a;b)' \
   '( (a)' \
-  'a>>>b'
+  'a>>>b' \
+  'a > b > c > d' \
+  'a < b > c |'
 do
   echo "$bad" >test$n.sh || exit
   ../profsh -t test$n.sh >test$n.out 2>test$n.err && {

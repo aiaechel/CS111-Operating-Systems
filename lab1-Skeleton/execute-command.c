@@ -85,14 +85,14 @@ void reset_redirect(int descriptors[4])
     {
         close(descriptors[2]);
         dup2(descriptors[0], 0);
+	close(descriptors[0]);
     }
     if(descriptors[3] >= 0)
     {
         close(descriptors[3]);
         dup2(descriptors[1], 1);
+	close(descriptors[1]);
     }
-    close(descriptors[0]);
-    close(descriptors[1]);
 }
 
 int do_command(command_t c)

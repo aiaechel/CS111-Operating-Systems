@@ -62,6 +62,13 @@ done
 
 # Another weird example: nobody would ever want to run this.
 a<b>c|d<e>f|g<h>i
+
+while
+  if echo test; then find stuff; echo success!; else lose stuff; echo fail!; fi
+do a | b;
+done
+
+this|is;(a<test)
 EOF
 
 cat >test.exp <<'EOF'
@@ -151,6 +158,32 @@ cat >test.exp <<'EOF'
     d<e>f \
   |
     g<h>i
+# 11
+  while
+    if
+      echo test
+    then
+        find stuff \
+      ;
+        echo success!
+    else
+        lose stuff \
+      ;
+        echo fail!
+    fi
+  do
+      a \
+    |
+      b
+  done
+# 12
+      this \
+    |
+      is \
+  ;
+    (
+     a<test
+    )
 EOF
 
 ../profsh -t test.sh >test.out 2>test.err || exit

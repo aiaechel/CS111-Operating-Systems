@@ -3,8 +3,20 @@ Andrew Lee - 204304351
 Michelle Chang - 904262084
 
 Added 2 more test cases to both test-t-bad.sh and test-t-ok.sh.
-Also added a new test script: test-exec.sh. This test script tests whether
-or not the execution portion of the code works.
+
+Also added 2 new test scripts for the execution aspect of the lab: 
+
+test-exec.sh, which tests whether or not the execution portion of the code works when the command is formatted correctly an the commands are used properly, which it should.
+
+test-exec-bad.sh, which tests whether or not the execution works with nonexistent
+commands or commands with incorrect usage that are formatted correctly, which it should not.
 
 Code compiles on c99 and c11
 We do not account for the case where there is a \n after a pipe: a | \n b
+
+For our program, if we see an exec command, then we run the command that
+follows, by basically changing the arguments that execvp receives. The exec
+command will more than likely not work if the command is something like 
+exec 3< readfile. The exec command WILL work if the command is something like
+exec echo testing, since in that case, we just need send "echo testing" to
+execvp, instead of "exec echo testing"

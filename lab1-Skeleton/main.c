@@ -67,6 +67,7 @@ main (int argc, char **argv)
   command_stream_t command_stream =
         make_command_stream (get_next_byte, script_stream);
   int profiling = -1;
+  int status = 0;
  /* if (profile_name)
     {
       profiling = prepare_profiling (profile_name);
@@ -80,7 +81,7 @@ main (int argc, char **argv)
     {
       if (print_tree)
 	{
-      printf ("# %d\n", command_number++);
+	  printf ("# %d\n", command_number++);
 	  print_command (command);
 	}
       else
@@ -89,7 +90,8 @@ main (int argc, char **argv)
 	  execute_command (command, profiling);
 	}
     }
+  status = last_command ? command_status(last_command) : 0;
   free_stream(command_stream);
   fclose(script_stream);
-  return print_tree || !last_command ? 0 : command_status (last_command);
+  return print_tree || !last_command ? 0 : status;
 }

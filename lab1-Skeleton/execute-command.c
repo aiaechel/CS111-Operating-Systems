@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <error.h>
+#include <string.h>
 
 /* FIXME: You may need to add #include directives, macro definitions,
    static function definitions, etc.  */
@@ -101,6 +102,7 @@ int do_command(command_t c)
     pid_t child_pid;
     int fds[4] = {-1, -3, -3, -7};
     int exit_status;
+    char** the_word;
     switch(c->type)
     {
         case SIMPLE_COMMAND:
@@ -108,7 +110,11 @@ int do_command(command_t c)
             if(child_pid == 0)
             {
                 set_redirect(c, fds);
-                execvp(c->u.word[0], c->u.word);
+		if(strcmp(c->u.word[0], "exec") == 0)
+		  the_word = &(c->u.word[1]);
+		else
+		  the_word = c->u.word;
+                execvp(the_word[0], the_word);
                 fprintf(stderr, "%s: command not found\n", c->u.word[0]);
                 exit(1);
 		reset_redirect(fds);

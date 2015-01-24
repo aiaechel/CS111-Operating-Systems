@@ -46,14 +46,6 @@ command_status (command_t c)
   return c->status;
 }
 
-void
-execute_command (command_t c, int profiling)
-{
-  /* FIXME: Replace this with your implementation, like 'prepare_profiling'.  */
-  do_command(c);
-  //error (1, 0, "command execution not yet implemented");
-}
-
 void set_redirect(command_t c, int descriptors[4])
 {
     if(c->input != NULL)
@@ -201,3 +193,10 @@ int do_command(command_t c)
     return c->status;
 }
 
+void
+execute_command (command_t c, int profiling)
+{
+  /* FIXME: Replace this with your implementation, like 'prepare_profiling'.  */
+  do_command(c);
+  //error (1, 0, "command execution not yet implemented");
+}

@@ -68,28 +68,28 @@ main (int argc, char **argv)
         make_command_stream (get_next_byte, script_stream);
   int profiling = -1;
   int status = 0;
- /* if (profile_name)
+  if (profile_name)
     {
       profiling = prepare_profiling (profile_name);
       if (profiling < 0)
 	error (1, errno, "%s: cannot open", profile_name);
-    }*/
+    }
 
   command_t last_command = NULL;
   command_t command;
   while ((command = read_command_stream (command_stream)))
-    {
-      if (print_tree)
+  {
+    if (print_tree)
 	{
 	  printf ("# %d\n", command_number++);
 	  print_command (command);
 	}
-      else
+    else
 	{
 	  last_command = command;
 	  execute_command (command, profiling);
 	}
-    }
+  }
   status = last_command ? command_status(last_command) : 0;
   free_stream(command_stream);
   fclose(script_stream);

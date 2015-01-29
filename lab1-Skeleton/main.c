@@ -20,6 +20,10 @@
 #include <getopt.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <time.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <unistd.h>
 
 #include "command.h"
 
@@ -41,11 +45,16 @@ get_next_byte (void *stream)
 int
 main (int argc, char **argv)
 {
+  struct timespec time_ended, start, end;
+  struct rusage r_usage;
+  int num_chars = 0;
+  double end_time, real_time, user_time, system_time;
+  char str[1024];
   int command_number = 1;
   bool print_tree = false;
   char const *profile_name = 0;
   program_name = argv[0];
-
+  clock_gettime(CLOCK_MONOTONIC, &start);
   for (;;)
     switch (getopt (argc, argv, "p:t"))
       {
@@ -95,8 +104,19 @@ main (int argc, char **argv)
   free_stream(command_stream);
   fclose(script_stream);
   if(profiling >= 0)
-  {
-    finish_profiling(profiling);
+  { 
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    clock_gettime(CLOCK_REALTIME, &time_ended);
+    getrusage(RUSAGE_SELF, &r_usage);
+    end_time = time_ended.tv_sec + time_ended.tv_nsec / 1000000000.0;
+    real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+    user_time = r_usage.ru_utime.tv_sec + r_usage.ru_utime.tv_usec / 1000000.0;
+    system_time = r_usage.ru_stime.tv_sec + r_usage.ru_stime.tv_usec / 1000000.0;
+    num_chars += snprintf(str, 1024, "%f %f %f %f", end_time, real_time, user_time, system_time);
+    num_chars += snprintf(str + num_chars, 1024 - num_chars, " [%d]", getpid());
+    str[num_chars++] = '\n';
+    write(profiling, (void*) str, num_chars);
+    close(profiling);
   }
   return print_tree || !last_command ? 0 : status;
 }

@@ -107,7 +107,7 @@ execute_command (command_t c, int profiling)
     switch(c->type)
     {
         case SIMPLE_COMMAND: {
-	    struct timespec time_ended, start, end, res;
+	    struct timespec time_ended, start, end;
 	    struct rusage usage;
 	    int num_chars = 0;
 	    double end_time, real_time, user_time, system_time;
@@ -132,7 +132,6 @@ execute_command (command_t c, int profiling)
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		clock_gettime(CLOCK_REALTIME, &time_ended);
 		getrusage(RUSAGE_CHILDREN, &usage);
-		//clock_getres(CLOCK_MONOTONIC, &res);
 		c->status = WEXITSTATUS(exit_status);
 	      if(profiling >= 0)
 	      {

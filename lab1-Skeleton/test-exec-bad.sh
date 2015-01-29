@@ -39,7 +39,8 @@ for bad in \
   'stuff' \
   'patch < santoheu' \
   'gcc' \
-  'gcc -o'
+  'gcc -o' \
+  'derp | derp'
 do
   echo "$bad" >test$n.sh || exit
   ../profsh test$n.sh >test$n.out 2>test$n.err && {

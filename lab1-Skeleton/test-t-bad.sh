@@ -88,5 +88,5 @@ done
 
 exit $status
 ) || exit
-
+echo "done"
 rm -fr "$tmp"

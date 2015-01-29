@@ -21,7 +21,7 @@
 
 CC = gcc
 WERROR_CFLAGS =
-CFLAGS = -g -Wall -Wextra $(WERROR_CFLAGS) -ggdb -O0 -std=c11
+CFLAGS = -g -Wall -Wextra $(WERROR_CFLAGS) -ggdb -O0 -lrt -std=gnu11
 LAB = 1
 DISTDIR = lab1-$(USER)
 CHECK_DIST = ./check-dist

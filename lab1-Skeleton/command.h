@@ -32,6 +32,10 @@ int prepare_profiling (char const *filename);
 
 /* Read a command from STREAM; return it, or NULL on EOF.  If there is
    an error, report the error and exit instead of returning.  */
+
+void finish_profiling (int fd);
+
+/* Close the inputted file descriptor      */
 command_t read_command_stream (command_stream_t stream);
 
 /* Print a command to stdout, for debugging.  */
@@ -39,7 +43,7 @@ void print_command (command_t);
 
 /* Execute a command.  Use profiling according to the flag; do not profile
    if the flag is negative.  */
-void execute_command (command_t, int);
+int execute_command (command_t, int);
 
 /* Return the exit status of a command, which must have previously
    been executed.  Wait for the command, if it is not already finished.  */

@@ -90,8 +90,13 @@ main (int argc, char **argv)
 	  execute_command (command, profiling);
 	}
   }
+  
   status = last_command ? command_status(last_command) : 0;
   free_stream(command_stream);
   fclose(script_stream);
+  if(profiling >= 0)
+  {
+    finish_profiling(profiling);
+  }
   return print_tree || !last_command ? 0 : status;
 }

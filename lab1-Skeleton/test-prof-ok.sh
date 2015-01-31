@@ -1,6 +1,6 @@
 #! /bin/sh
 
-# UCLA CS 111 Lab 1 - Test that syntax errors are caught.
+# UCLA CS 111 Lab 1 - Test that valid syntax is processed correctly.
 
 # Copyright 2012-2014 Paul Eggert.
 
@@ -19,41 +19,44 @@
 
 tmp=$0-$$.tmp
 mkdir "$tmp" || exit
+
 (
 cd "$tmp" || exit
-status=
 
-# Sanity check, to make sure it works with at least one good example.
-echo x >test0.sh || exit
-../profsh -t test0.sh >test0.out 2>test0.err || exit
-echo '# 1
-  x' >test0.exp || exit
-diff -u test0.exp test0.out || exit
-test ! -s test0.err || {
-  cat test0.err
+cat >test.sh <<'EOF'
+echo a
+
+if echo test1;
+then echo test2;
+else echo test3;
+fi
+
+(echo test2
+echo test4
+echo test3
+echo test1) > input
+
+cat < input | sort
+EOF
+
+cat >test.exp <<'EOF'
+a
+test1
+test2
+test1
+test2
+test3
+test4
+EOF
+
+../profsh test.sh >test.out 2>test.err || exit
+
+diff -u test.exp test.out || exit
+test ! -s test.err || {
+  cat test.err
   exit 1
 }
-n=1
-for bad in \
-  'naotehu' \
-  'stuff' \
-  'patch < santoheu' \
-  'gcc' \
-  'gcc -o'
-do
-  echo "$bad" >test$n.sh || exit
-  ../profsh test$n.sh >test$n.out 2>test$n.err && {
-    echo >&2 "test$n: unexpectedly succeeded for: $bad"
-    status=1
-  }
-  test -s test$n.err || {
-    echo >&2 "test$n: no error message for: $bad"
-    status=1
-  }
-  n=$((n+1))
-done
 
-exit $status
 ) || exit
 
 rm -fr "$tmp"

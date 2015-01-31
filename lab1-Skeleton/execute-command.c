@@ -38,7 +38,7 @@ prepare_profiling (char const *name)
      add auxiliary functions and otherwise modify the source code.
      You can also use external functions defined in the GNU C Library.  */
   //error (0, 0, "warning: profiling not yet implemented");
-  return open(name, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  return open(name, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
 void
@@ -107,7 +107,7 @@ execute_command (command_t c, int profiling)
     switch(c->type)
     {
         case SIMPLE_COMMAND: {
-	    struct timespec time_ended, start, end;
+            struct timespec time_ended, start, end;
 	    struct rusage usage;
 	    int num_chars = 0;
 	    double end_time, real_time, user_time, system_time;
@@ -183,6 +183,12 @@ execute_command (command_t c, int profiling)
                 fprintf(stderr, "Failed to make a pipe!\n");
                 exit(1);
             }
+            struct timespec time_ended, start, end;
+	    struct rusage usage;
+	    int num_chars = 0;
+	    double end_time, real_time, user_time, system_time;
+	    char str[1024];
+	    clock_gettime(CLOCK_MONOTONIC, &start);
             child_pid = fork();
             if(child_pid == 0)
             {
@@ -191,6 +197,20 @@ execute_command (command_t c, int profiling)
                 execute_command(c->u.command[0], profiling);
                 close(pipefd[1]);
                 close(1);
+		/*		
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		clock_gettime(CLOCK_REALTIME, &time_ended);
+		getrusage(RUSAGE_SELF, &usage);
+	        if(profiling >= 0)
+	        {
+		    end_time = time_ended.tv_sec + time_ended.tv_nsec / 1000000000.0;
+		    real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+		    user_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0;
+		    system_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0;
+		    num_chars += snprintf(str, 1024, "%f %f %f %f [%d]\n", end_time, real_time, user_time, system_time, getpid());		    
+		    write(profiling, (void*) str, num_chars);
+	        }
+		*/
                 exit(WEXITSTATUS(exit_status));
             }
             else if(child_pid > 0)
@@ -198,8 +218,22 @@ execute_command (command_t c, int profiling)
                 fds[0] = dup(0);
                 close(pipefd[1]);
                 dup2(pipefd[0], 0);
-                c->status = execute_command(c->u.command[1], profiling);
+		//                c->status = execute_command(c->u.command[1], profiling);
 		waitpid(child_pid, &exit_status, 0);
+				
+		clock_gettime(CLOCK_MONOTONIC, &end);
+		clock_gettime(CLOCK_REALTIME, &time_ended);
+		getrusage(RUSAGE_CHILDREN, &usage);
+	        if(profiling >= 0)
+	        {
+		    end_time = time_ended.tv_sec + time_ended.tv_nsec / 1000000000.0;
+		    real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+		    user_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0;
+		    system_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0;
+		    num_chars += snprintf(str, 1024, "%f %f %f %f [%d]\n", end_time, real_time, user_time, system_time, child_pid);		    
+		    write(profiling, (void*) str, num_chars);
+   	        }
+		c->status = execute_command(c->u.command[1], profiling);
                 dup2(fds[0], 0);
                 close(pipefd[0]);                
                 close(fds[0]);

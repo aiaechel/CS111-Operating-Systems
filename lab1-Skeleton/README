@@ -1,22 +1,43 @@
-CS111 Lab 1B
+CS111 Lab 1C
 Andrew Lee - 204304351
 Michelle Chang - 904262084
-
-Added 2 more test cases to both test-t-bad.sh and test-t-ok.sh.
-
-Also added 2 new test scripts for the execution aspect of the lab: 
-
-test-exec.sh, which tests whether or not the execution portion of the code works when the command is formatted correctly an the commands are used properly, which it should.
-
-test-exec-bad.sh, which tests whether or not the execution works with nonexistent
-commands or commands with incorrect usage that are formatted correctly, which it should not.
 
 Code compiles on c99 and c11
 We do not account for the case where there is a \n after a pipe: a | \n b
 
-For our program, if we see an exec command, then we run the command that
-follows, by basically changing the arguments that execvp receives. The exec
-command will more than likely not work if the command is something like 
-exec 3< readfile. The exec command WILL work if the command is something like
-exec echo testing, since in that case, we just need send "echo testing" to
-execvp, instead of "exec echo testing"
+In our subshell command implementation, we do not use any forks. The only forks 
+we use are in the simple command and the pipe command, where we use 1 each. That
+is why we do not put in any profiling information for subshell commands, since
+they do not spawn any child processes.
+
+1. Yes. In our program, we never called fork() more than 1 time per command, so
+   there would not be any conflicts with 2 or more processes ending at around 
+   the same time. We also did not implement any parallelism, so there would
+   not be any race conditions that would cause profiling lines to be printed
+   out of order. We also use waitpid to wait for child processes to finish 
+   before we print profiling information about them.
+2. No, the real time for the process cannot be less than the sum of the user
+   time and the system time, in the scope of this lab. That is because the only
+   time this can happen are when multiple threads in one process add to the 
+   user/system time while reducing real time. Since we are not implementing
+   parallelism in this lab, this is not possible.
+3. In our implementation of the code, the 2nd, 3rd, and 4th columns cannot be
+   negative. One reason this could happen is that the variables that hold the
+   times can overflow if they cannot hold large enough numbers. We use variables
+   with that can hold large enough values to avoid this.
+4. The only commands that need profiling information are simple commands and 
+   pipe commands in our implementation. To test simple commands, I ran profsh
+   on a sequence command made up of multiple simple commands; 
+   e.g. sleep 2s; sleep 3s; sleep 4s
+   When I ran profsh on this, the output information was in the correct order, 
+   and I assumed that this would hold for any string of simple commands.
+
+   For pipe commands, I tried piping sleep commands of various lengths into 
+   each other, to see what would happen to the profiling information if certain
+   sections of the pipe finish before other sections. 
+   e.g. sleep 4s | sleep 3s | sleep 2s 
+   	sleep 5s | sleep 1s | sleep 3s
+	sleep 1s | sleep 3s | sleep 2s
+	sleep 1s | sleep 2s | sleep 3s
+   When I ran all of these cases, the log lines printed in the correct order.
+   I tested these on the Seasnet Linux server.

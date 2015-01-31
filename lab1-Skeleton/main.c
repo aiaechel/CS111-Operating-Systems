@@ -112,11 +112,9 @@ main (int argc, char **argv)
     real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
     user_time = r_usage.ru_utime.tv_sec + r_usage.ru_utime.tv_usec / 1000000.0;
     system_time = r_usage.ru_stime.tv_sec + r_usage.ru_stime.tv_usec / 1000000.0;
-    num_chars += snprintf(str, 1024, "%f %f %f %f", end_time, real_time, user_time, system_time);
-    num_chars += snprintf(str + num_chars, 1024 - num_chars, " [%d]", getpid());
-    str[num_chars++] = '\n';
+    num_chars += snprintf(str, 1024, "%f %f %f %f [%d]\n", end_time, real_time, user_time, system_time, getpid());
     write(profiling, (void*) str, num_chars);
     close(profiling);
   }
-  return print_tree || !last_command ? 0 : status;
+  return print_tree || !last_command ? 0 : status || (profile_name != 0 && profiling < 0);
 }

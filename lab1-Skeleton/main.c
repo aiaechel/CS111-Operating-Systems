@@ -96,7 +96,7 @@ main (int argc, char **argv)
     else
 	{
 	  last_command = command;
-	  execute_command (command, profiling);
+	  execute_command (command, &profiling);
 	}
   }
   
@@ -113,8 +113,13 @@ main (int argc, char **argv)
     user_time = r_usage.ru_utime.tv_sec + r_usage.ru_utime.tv_usec / 1000000.0;
     system_time = r_usage.ru_stime.tv_sec + r_usage.ru_stime.tv_usec / 1000000.0;
     num_chars += snprintf(str, 1024, "%f %f %f %f [%d]\n", end_time, real_time, user_time, system_time, getpid());
-    write(profiling, (void*) str, num_chars);
-    close(profiling);
+    if(write(profiling, (void*) str, num_chars) == -1)
+      {
+	close(profiling);
+	profiling = -1;
+      }
+    else
+      close(profiling);
   }
-  return print_tree || !last_command ? 0 : status || (profile_name != 0 && profiling < 0);
+  return print_tree || !last_command ? 0 : status || (profile_name && profiling < 0);
 }

@@ -41,12 +41,6 @@ prepare_profiling (char const *name)
   return open(name, O_WRONLY | O_CREAT | O_APPEND, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 }
 
-void
-finish_profiling (int fd)
-{
-  close(fd);
-}
-
 int
 command_status (command_t c)
 {
@@ -96,7 +90,7 @@ void reset_redirect(int descriptors[4])
 }
 
 int
-execute_command (command_t c, int profiling)
+execute_command (command_t c, int* profiling)
 {
   int pipefd[2];
     pid_t child_pid;
@@ -118,8 +112,9 @@ execute_command (command_t c, int profiling)
                 the_word = &(c->u.word[1]);
                 execvp(the_word[0], the_word);
                 fprintf(stderr, "exec: %s: command not found\n", the_word[0]);
+		reset_redirect(fds);
                 exit(1);
-                reset_redirect(fds);
+
             }
             child_pid = fork();
             clock_gettime(CLOCK_MONOTONIC, &start);
@@ -138,7 +133,7 @@ execute_command (command_t c, int profiling)
                 clock_gettime(CLOCK_REALTIME, &time_ended);
                 getrusage(RUSAGE_CHILDREN, &usage);
                 c->status = WEXITSTATUS(exit_status);
-                if(profiling >= 0)
+                if(*profiling >= 0)
                 {
                     end_time = time_ended.tv_sec + time_ended.tv_nsec / 1000000000.0;
                     real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
@@ -162,7 +157,8 @@ execute_command (command_t c, int profiling)
                         }
                     }
                     str[num_chars++] = '\n';
-                    write(profiling, (void*) str, num_chars);
+                    if(write(*profiling, (void*) str, num_chars) == -1)
+		      *profiling = -1;
                 }
             }
             else
@@ -189,21 +185,24 @@ execute_command (command_t c, int profiling)
                 set_redirect(c, fds);
                 c->status = execute_command(c->u.command[0], profiling);
                 reset_redirect(fds);
+		exit(c->status);
             }
             else if(child_pid > 0)
             {
                 waitpid(child_pid, &exit_status, 0);
+		c->status = WEXITSTATUS(exit_status);
                 clock_gettime(CLOCK_MONOTONIC, &end);
                 clock_gettime(CLOCK_REALTIME, &time_ended);
                 getrusage(RUSAGE_CHILDREN, &usage);
-                if(profiling >= 0)
+                if(*profiling >= 0)
                 {
                     end_time = time_ended.tv_sec + time_ended.tv_nsec / 1000000000.0;
                     real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
                     user_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0;
                     system_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0;
                     num_chars += snprintf(str, 1024, "%f %f %f %f [%d]\n", end_time, real_time, user_time, system_time, child_pid);		    
-                    write(profiling, (void*) str, num_chars);
+                    if(write(*profiling, (void*) str, num_chars) == -1)
+		      *profiling = -1;
                 }
             }
             else
@@ -245,14 +244,15 @@ execute_command (command_t c, int profiling)
                 clock_gettime(CLOCK_MONOTONIC, &end);
                 clock_gettime(CLOCK_REALTIME, &time_ended);
                 getrusage(RUSAGE_CHILDREN, &usage);
-                if(profiling >= 0)
+                if(*profiling >= 0)
                 {
                     end_time = time_ended.tv_sec + time_ended.tv_nsec / 1000000000.0;
                     real_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1000000000.0;
                     user_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1000000.0;
                     system_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1000000.0;
                     num_chars += snprintf(str, 1024, "%f %f %f %f [%d]\n", end_time, real_time, user_time, system_time, child_pid);		    
-                    write(profiling, (void*) str, num_chars);
+                    if(write(*profiling, (void*) str, num_chars) == -1)
+		      *profiling = -1;
                 }
                 c->status = execute_command(c->u.command[1], profiling);
                 dup2(fds[0], 0);

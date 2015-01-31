@@ -39,10 +39,11 @@ for bad in \
   'stuff' \
   'patch < santoheu' \
   'gcc' \
-  'gcc -o'
+  'gcc -o' \
+  '(exec derp)'
 do
   echo "$bad" >test$n.sh || exit
-  ../profsh test$n.sh >test$n.out 2>test$n.err && {
+  ../profsh test$n.sh -p output >test$n.out 2>test$n.err && {
     echo >&2 "test$n: unexpectedly succeeded for: $bad"
     status=1
   }
@@ -52,6 +53,11 @@ do
   }
   n=$((n+1))
 done
+cat output | grep "[A-Za-z]" > outputcheck
+test ! -s outputcheck || {
+    echo >&2 "Some command was able to exec!"
+    status = 1;
+  }
 
 exit $status
 ) || exit

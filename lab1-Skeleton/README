@@ -2,13 +2,17 @@ CS111 Lab 1C
 Andrew Lee - 204304351
 Michelle Chang - 904262084
 
-Code compiles on c99 and c11
+Code compiles on gnu11
 We do not account for the case where there is a \n after a pipe: a | \n b
 
-In our subshell command implementation, we do not use any forks. The only forks 
-we use are in the simple command and the pipe command, where we use 1 each. That
-is why we do not put in any profiling information for subshell commands, since
-they do not spawn any child processes.
+I added 2 test scripts for this part, as the spec calls for, called
+test-prof-ok.sh and test-prof-bad.sh. They are in the same style as test-t-ok.sh
+and test-t-bad.sh. In test-prof-ok.sh, I check the output file for the correct
+number of process id lines, the correct number of commands run, and if the times
+that they ended are in increasing order. In test-t-bad.sh, I run commands that
+should not exec any commands and check that there are no lines with letters in them, since the only profiling lines that should be there use [pid] instead of
+the command name. One note: I use sleep commands in test-prof-ok.sh, so please
+do not think that the compilation failed because there is a bit of a hang.
 
 1. Yes. In our program, we never called fork() more than 1 time per command, so
    there would not be any conflicts with 2 or more processes ending at around 

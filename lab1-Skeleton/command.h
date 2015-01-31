@@ -40,7 +40,7 @@ void print_command (command_t);
 
 /* Execute a command.  Use profiling according to the flag; do not profile
    if the flag is negative.  */
-int execute_command (command_t, int);
+int execute_command (command_t, int*);
 
 /* Return the exit status of a command, which must have previously
    been executed.  Wait for the command, if it is not already finished.  */

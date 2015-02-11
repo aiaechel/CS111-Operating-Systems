@@ -14,6 +14,8 @@
 #include <linux/wait.h>
 #include <linux/file.h>
 
+#include <asm/string.h>
+
 #include "spinlock.h"
 #include "osprd.h"
 
@@ -58,10 +60,12 @@ typedef struct osprd_info {
 
 	unsigned ticket_tail;		// Next available ticket for
 					// the device lock
-
+        unsigned num_read;
+        unsigned num_write;
+        unsigned num_killed;
+    
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
-
 	/* HINT: You may want to add additional fields to help
 	         in detecting deadlock. */
 
@@ -107,7 +111,7 @@ static void for_each_open_file(struct task_struct *task,
  */
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
-	int i, sector_beg, write_size;
+	int sector_beg, write_size;
 	if (!blk_fs_request(req)) {
 		end_request(req, 0);
 		return;
@@ -125,26 +129,20 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	  {
 	    sector_beg = req->sector * SECTOR_SIZE;
 	    write_size = SECTOR_SIZE * req->current_nr_sectors;
-	    for(i = 0; i < write_size; i++)
-	      {
-		req->buffer[i] = d->data[sector_beg + i];
-	      }
+	    memcpy(req->buffer, &(d->data[sector_beg]), write_size);
 	  }
 	else if(rq_data_dir(req) == WRITE)
 	  {
 	    sector_beg = req->sector  * SECTOR_SIZE;
 	    write_size = SECTOR_SIZE * req->current_nr_sectors;
-	    for(i = 0; i < write_size; i++)
-	      {
-		d->data[sector_beg + i] = req->buffer[i];
-	      }
+	    memcpy(&(d->data[sector_beg]), req->buffer, write_size);
 	  }
 	else
 	  {
 	    end_request(req, 0);
 	  }
 	// Your code here.
-	eprintk("Should process request...\n");
+	//	eprintk("Should process request...\n");
 
 	end_request(req, 1);
 }
@@ -160,24 +158,29 @@ static int osprd_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+int osprd_ioctl(struct inode *inode, struct file *filp,
+		unsigned int cmd, unsigned long arg);
 
 // This function is called when a /dev/osprdX file is finally closed.
 // (If the file descriptor was dup2ed, this function is called only when the
 // last copy is closed.)
 static int osprd_close_last(struct inode *inode, struct file *filp)
 {
+         int r = 0;
 	if (filp) {
-		osprd_info_t *d = file2osprd(filp);
-		int filp_writable = filp->f_mode & FMODE_WRITE;
+	  //  		osprd_info_t *d = file2osprd(filp);
+		//	  	int filp_writable = filp->f_mode & FMODE_WRITE;
 
 		// EXERCISE: If the user closes a ramdisk file that holds
 		// a lock, release the lock.  Also wake up blocked processes
 		// as appropriate.
 
 		// Your code here.
-
+		//eprintk("Close Last\n");
+		r = osprd_ioctl(inode, filp, OSPRDIOCRELEASE, 0);
+	      //	      eprintk("Close Last ioctl returned %d, ticket_head = %u, ticket_tail = %u\n", r, d->ticket_head, d->ticket_tail);
 		// This line avoids compiler warnings; you may remove it.
-		(void) filp_writable, (void) d;
+		//(void) filp_writable, (void) d;
 
 	}
 
@@ -198,17 +201,78 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 {
 	osprd_info_t *d = file2osprd(filp);	// device info
 	int r = 0;			// return value: initially 0
-
+	unsigned cur_ticket = d->ticket_head;
 	// is file open for writing?
 	int filp_writable = (filp->f_mode & FMODE_WRITE) != 0;
 
 	// This line avoids compiler warnings; you may remove it.
-	(void) filp_writable, (void) d;
+	//	(void) filp_writable, (void) d;
 
 	// Set 'r' to the ioctl's return value: 0 on success, negative on error
 
 	if (cmd == OSPRDIOCACQUIRE) {
+	        d->ticket_head++;
+		//eprintk("Attempting to acquire\n");
+     		if(filp_writable)
+		{
+		       if(d->num_write != 0 
+			  || d->num_read != 0) 
+			 {
+			   //eprintk("Write wait! num_write is %u and num_read is %u.\nLocal ticket is %u, d->ticket_head is %u, and d->ticket_tail is %u.\n", d->num_write, d->num_read, cur_ticket, d->ticket_head, d->ticket_tail);
+			     r = wait_event_interruptible(d->blockq,
+			         d->num_write == 0 && d->num_read == 0
+   			      && d->ticket_tail == cur_ticket);
+			 }
+		       //eprintk("Locking acquire write\n");
+			osp_spin_lock(&d->mutex);
+			if(r < 0) {
+			  osp_spin_unlock(&d->mutex);
+			  //eprintk("Signal received! Ticket is %u, ticket->tail is %u, ticket_head is %u. Write\n", cur_ticket, d->ticket_tail, d->ticket_head);
+			  if(cur_ticket == d->ticket_tail)
+			    d->ticket_tail++;
+			  d->num_killed++;
+			 return r;
+			}
+			d->ticket_tail++;
+			//eprintk("incrementing write, ticket is %u\n", cur_ticket);
+			if((filp->f_flags & F_OSPRD_LOCKED) != 0)
+			  {
+			    osp_spin_unlock(&d->mutex);
+			    return -EDEADLK;
+			  }
+			d->num_write++;
+			filp->f_flags |= F_OSPRD_LOCKED;
+			osp_spin_unlock(&d->mutex);
+			//eprintk("Acquire write unlocked!\n");
+		}
+		else
+		{
+		        if(d->num_write != 0 ) {
 
+			  //eprintk("Read wait! num_write is %u and num_read is %u.\nLocal ticket is %u, d->ticket_head is %u, and ticket_tail is %u.\n", d->num_write, d->num_read, cur_ticket, d->ticket_head, d->ticket_tail);
+
+			  r = wait_event_interruptible(d->blockq, 
+			      d->num_write == 0 
+			   && d->ticket_tail == cur_ticket);
+			}
+			osp_spin_lock(&d->mutex);
+			if (r < 0){
+			  osp_spin_unlock(&d->mutex);
+			  //eprintk("Signal received! Ticket is %u, ticket->tail is %u, ticket_head is %u. Read\n", cur_ticket, d->ticket_tail, d->ticket_head);
+			  d->num_killed++;
+  			  if(cur_ticket == d->ticket_tail)
+  			    d->ticket_tail++;
+			  //eprintk("Ticket tail = %u\n", d->ticket_tail);
+			  return r;
+			}
+			d->ticket_tail++;
+			//eprintk("Incrementing read, cur_ticket is %u\n", cur_ticket);
+			d->num_read++;
+			filp->f_flags |= F_OSPRD_LOCKED;
+			//eprintk("Read acquire: flag set? %d\n", (filp->f_flags & F_OSPRD_LOCKED) != 0);
+			osp_spin_unlock(&d->mutex);
+			//eprintk("Acquire read unlocked\n");
+		}
 		// EXERCISE: Lock the ramdisk.
 		//
 		// If *filp is open for writing (filp_writable), then attempt
@@ -245,8 +309,8 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// be protected by a spinlock; which ones?)
 
 		// Your code here (instead of the next two lines).
-		eprintk("Attempting to acquire\n");
-		r = -ENOTTY;
+
+		//		r = -ENOTTY;
 
 	} else if (cmd == OSPRDIOCTRYACQUIRE) {
 
@@ -256,10 +320,30 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// block.  If OSPRDIOCACQUIRE would block or return deadlock,
 		// OSPRDIOCTRYACQUIRE should return -EBUSY.
 		// Otherwise, if we can grant the lock request, return 0.
-
+	  		//eprintk("Attempting to try acquire\n");
 		// Your code here (instead of the next two lines).
-		eprintk("Attempting to try acquire\n");
-		r = -ENOTTY;
+	       	if(filp_writable)
+		{
+		       if(d->num_write != 0 
+			  || d->num_read != 0) 
+			 return -EBUSY;
+		       	osp_spin_lock(&d->mutex);
+			//eprintk("Incrementing write\n");
+			d->num_write++;
+			filp->f_flags |= F_OSPRD_LOCKED;
+			osp_spin_unlock(&d->mutex);
+		}
+		else
+		{
+		        if(d->num_write != 0)
+			  return -EBUSY;
+			osp_spin_lock(&d->mutex);
+			//eprintk("Incrementing read\n");
+			d->num_read++;
+			filp->f_flags |= F_OSPRD_LOCKED;
+			osp_spin_unlock(&d->mutex);
+		}
+	  //	r = -ENOTTY;
 
 	} else if (cmd == OSPRDIOCRELEASE) {
 
@@ -271,10 +355,45 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		// you need, and return 0.
 
 		// Your code here (instead of the next line).
-		r = -ENOTTY;
-
+	  //		r = -ENOTTY;
+		//eprintk("Releasing\n");
+		if ((filp->f_flags & F_OSPRD_LOCKED) == 0) {
+		    //eprintk("Check failed!\n");
+		  return -EINVAL;
+		}
+		//		//eprintk("Check passed\n");
+		if(filp_writable)
+		  {
+		    osp_spin_lock(&d->mutex);
+		    //eprintk("Release write: locked mutex\n");
+		    d->num_write = 0;
+		    filp->f_flags ^= F_OSPRD_LOCKED;
+		    osp_spin_unlock(&d->mutex);
+		    //eprintk("Release write: unlocked mutex, write is now %u.\n", d->num_write);
+		  }
+		else
+		  {
+		    osp_spin_lock(&d->mutex);
+		    //eprintk("Trying to decrement read: %u\n", d->num_read);
+		    if(d->num_read)
+		      d->num_read--;
+		    if(d->num_read == 0)
+		      filp->f_flags ^= F_OSPRD_LOCKED;
+		    if(d->ticket_head == cur_ticket && d->num_killed)
+		      {
+			d->ticket_tail = 0;
+			d->ticket_head = 0;
+			d->num_killed = 0;
+		      }
+		    osp_spin_unlock(&d->mutex);
+		    //eprintk("Release read: unlock mutex, num_read is now %u.\n", d->num_read);
+		  }
+		wake_up_all(&d->blockq);
+		//eprintk("Wake up in release! num_write is %u and num_read is %u.\nLocal ticket is %u, d->ticket_head is %u, and ticket_tail is %u.\n", d->num_write, d->num_read, cur_ticket, d->ticket_head, d->ticket_tail);
 	} else
 		r = -ENOTTY; /* unknown command */
+	//eprintk("Returning from ioctl with %d\n", r);
+	
 	return r;
 }
 
@@ -287,6 +406,9 @@ static void osprd_setup(osprd_info_t *d)
 	init_waitqueue_head(&d->blockq);
 	osp_spin_lock_init(&d->mutex);
 	d->ticket_head = d->ticket_tail = 0;
+	d->num_read = 0;
+	d->num_write = 0;
+	d->num_killed = 0;
 	/* Add code here if you add fields to osprd_info_t. */
 }
 

@@ -47,7 +47,7 @@ static int nsectors = 32;
 module_param(nsectors, int, 0);
 
 struct num_list {
-  int ticket;
+  unsigned ticket;
   struct num_list* next;
 };
 
@@ -67,9 +67,11 @@ typedef struct osprd_info {
         unsigned num_read;
         unsigned num_write;
         unsigned num_killed;
-        unsigned first;
+        pid_t write_pid;
+
         struct num_list *killed_list;
-        struct num_list *killed_list_tail;
+        struct num_list* pid_list;
+  //        struct num_list *killed_list_tail;
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
 	/* HINT: You may want to add additional fields to help
@@ -172,7 +174,6 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 // last copy is closed.)
 static int osprd_close_last(struct inode *inode, struct file *filp)
 {
-         int r = 0;
 	if (filp) {
 	   	osprd_info_t *d = file2osprd(filp);
 	        int filp_writable = filp->f_mode & FMODE_WRITE;
@@ -183,14 +184,7 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 
 		// Your code here.
 		
-		r = osprd_ioctl(inode, filp, OSPRDIOCRELEASE, 0);
-		//		eprintk("Ticket head: %u, ticket tail: %u, num killed: %u\n", d->ticket_head, d->ticket_tail, d->num_killed);
-		/*		if(d->num_killed && d->ticket_head - d->ticket_tail == d->num_killed)
-		  {
-		    d->ticket_head = 0;
-		    d->ticket_tail = 0;
-		    d->num_killed = 0;
-		    }*/
+		osprd_ioctl(inode, filp, OSPRDIOCRELEASE, 0);
 		// This line avoids compiler warnings; you may remove it.
 		//(void) filp_writable, (void) d;
 
@@ -215,6 +209,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	int r = 0;			// return value: initially 0
 	unsigned cur_ticket;
 	struct num_list* temp = NULL;
+	struct num_list* a;
 	// is file open for writing?
 	int filp_writable = (filp->f_mode & FMODE_WRITE) != 0;
 
@@ -231,62 +226,83 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		  }*/
 		cur_ticket = d->ticket_head;
 	        d->ticket_head++;
+		if(d->write_pid == current->pid)
+		{
+		    eprintk("Write pid: %u\n",d->write_pid);
+		    d->ticket_head--;
+		    osp_spin_unlock(&d->mutex);
+		    return -EDEADLK;
+		}
+
 	      temp = (struct num_list*) kmalloc(sizeof(struct num_list), GFP_ATOMIC);
 	      temp->ticket = cur_ticket;
 	      temp->next = NULL;
 		//eprintk("Attempting to acquire\n");
      		if(filp_writable)
 		{
-		       if(d->num_write != 0 
-			  || d->num_read != 0) 
+			a = d->pid_list;			
+			while(a != NULL && a->ticket != current->pid)
+			  a = a->next;
+			if(a != NULL && a->ticket == current->pid)
+			{
+			  kfree(temp);
+			  d->ticket_head--;
+			  osp_spin_unlock(&d->mutex);
+			  return -EDEADLK;
+			}
+
+		        if(d->num_write != 0 
+			  || d->num_read != 0 || cur_ticket != d->ticket_tail) 
 			 {
-			   //eprintk("Write wait! num_write is %u and num_read is %u.\nLocal ticket is %u, d->ticket_head is %u, and d->ticket_tail is %u.\n", d->num_write, d->num_read, cur_ticket, d->ticket_head, d->ticket_tail);
+			   eprintk("Write wait! num_write is %u and num_read is %u.\nLocal ticket is %u, d->ticket_head is %u, and d->ticket_tail is %u.\n", d->num_write, d->num_read, cur_ticket, d->ticket_head, d->ticket_tail);
 			   osp_spin_unlock(&d->mutex);
 			     r = wait_event_interruptible(d->blockq,
-			       (d->num_write == 0 && d->num_read == 0
-				&& d->ticket_tail == cur_ticket)
-				|| d->num_killed > -1);
+			       d->num_write == 0 && d->num_read == 0
+				&& d->ticket_tail == cur_ticket
+				);
+			     eprintk("Wake write! Cur ticket is %u, ticket tail is %u\n", cur_ticket, d->ticket_tail);
 			     osp_spin_lock(&d->mutex);
-			     /*			  if(d->num_killed > -1)
-			    {
-			      eprintk("num_killed is %u\n", d->num_killed);
-			      if(cur_ticket == d->ticket_head - 1)
-			      {
-				d->ticket_head--;
-				d->num_killed = -1;
-			      }
-			      if(d->num_killed < cur_ticket)
-				cur_ticket--;
-			      if(r == -ERESTARTSYS)
-				{
-				  osp_spin_unlock(&d->mutex);
-				  return r;
-				}
-			    }
-			  else if(r == -ERESTARTSYS)
-			    {
-			      eprintk("Signal received! cur ticket is %u\n", cur_ticket);
-			      d->num_killed = cur_ticket;
-			      osp_spin_unlock(&d->mutex);
-			      wake_up_all(&d->blockq);
-			      return r;
-			    }
-			     */
 			 }
 		       //eprintk("Locking acquire write\n");
 			if(r < 0) {
 			  // eprintk("Signal received in write!");
-			  if(cur_ticket == d->ticket_tail)
+			  if(cur_ticket == d->ticket_tail){
+			    kfree(temp);
 			    d->ticket_tail++;
-			  else if(d->killed_list_tail == NULL){
-			     d->killed_list_tail = temp;
+			    eprintk("Freed %u\n", cur_ticket);
+			  }
+			  else if(d->killed_list == NULL){
+			    //d->killed_list_tail = temp;
 			     d->killed_list = temp;
+			     eprintk("Added %u to list\n", temp->ticket);
 			   }
 			   else {
-			     d->killed_list_tail->next = temp;
-			     d->killed_list_tail = d->killed_list_tail->next;
+			     struct num_list* prev = d->killed_list;
+			     a = d->killed_list->next;
+			     while(a != NULL && a->ticket < cur_ticket)
+			       {
+				 prev = a;
+				 a = a->next;
+			       }
+			     if(a == NULL)
+			       {
+				 if(cur_ticket < prev->ticket)
+				 {
+				   temp->next = prev;
+				   d->killed_list = temp;
+				 }
+				 else
+				   prev->next = temp;
+			       }
+			     else
+			     {
+			       temp->next = a;
+			       prev->next = temp;
+			     }
+			     //			     d->killed_list_tail->next = temp;
+			     //			     d->killed_list_tail = d->killed_list_tail->next;
+			     eprintk("Added %u to list\n", temp->ticket);
 			   }
-			   //			   d->num_killed++;
 			   osp_spin_unlock(&d->mutex);
 			   
 			 return r;
@@ -297,8 +313,9 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			d->ticket_tail++;
 			//eprintk("incrementing write, ticket is %u\n", cur_ticket);
 			d->num_write++;
+			d->write_pid = current->pid;
 			filp->f_flags |= F_OSPRD_LOCKED;
-			struct num_list* a = d->killed_list;
+			a = d->killed_list;
 			while(a != NULL)
 			  {
 			    eprintk("Found a ticket in write. Its ticket is %u and the current ticket is %u.\n", a->ticket, cur_ticket);
@@ -307,69 +324,78 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			      a = a->next;
 			      kfree(d->killed_list);
 			      d->killed_list = a;
-			      if(a == NULL)
-				d->killed_list_tail = NULL;
+			      //if(a == NULL)
+			      //d->killed_list_tail = NULL;
+			      eprintk("Did stuff in loop, ticket_tail is now %u\n", d->ticket_tail);
 			    }
+			    else if(a->ticket < d->ticket_tail)
+			    {
+			      a = a->next;
+			      kfree(d->killed_list);
+			      d->killed_list = a;
+			    }
+
 			    else
 			      a = a->next;
 			  }
 			osp_spin_unlock(&d->mutex);
 			kfree(temp);
-			eprintk("Acquire write unlocked!\n");
+			//	eprintk("Returning; num_write is %u and num_read is %u.\nd->ticket_head is %u, and d->ticket_tail is %u.\n", d->num_write, d->num_read, d->ticket_head, d->ticket_tail);
+			//eprintk("Acquire write unlocked!\n");
 		}
 		else
 		{
-		        if(d->num_write != 0 ) {
+		        if(d->num_write != 0 || cur_ticket != d->ticket_tail ) {
 			  osp_spin_unlock(&d->mutex);
 			  //eprintk("Read wait! num_write is %u and num_read is %u.\nLocal ticket is %u, d->ticket_head is %u, and ticket_tail is %u.\n", d->num_write, d->num_read, cur_ticket, d->ticket_head, d->ticket_tail);
 			  r = wait_event_interruptible(d->blockq, 
-			    ( d->num_write == 0 
-			      && d->ticket_tail == cur_ticket) || d->num_killed > -1);
+			     d->num_write == 0 
+			      && d->ticket_tail == cur_ticket);
+			  eprintk("Read wake! Current ticket is %u, ticket tail is %u\n", cur_ticket, d->ticket_tail);
 			  osp_spin_lock(&d->mutex);
-
-			  /*if(d->num_killed > -1)
-			    {
-			      eprintk("cur_ticket is %u\n", cur_ticket);
-			      if(cur_ticket == d->ticket_head - 1)
-			      {
-				eprintk("Meep\n");
-				d->ticket_head--;
-				d->num_killed = -1;
-			      }
-			      if(d->num_killed < cur_ticket)
-			      {
-				cur_ticket--;
-				eprintk("cur_ticket was %u, now it's %u\n", cur_ticket + 1, cur_ticket);
-			      }
-			      if(r == -ERESTARTSYS)
-				{
-				  osp_spin_unlock(&d->mutex);
-				  return r;
-				}
-			    }
-			    else if(r == -ERESTARTSYS)
-			    {
-			      eprintk("Signal received! cur ticket is %u\n", cur_ticket);
-			      d->num_killed = cur_ticket;
-			      osp_spin_unlock(&d->mutex);
-			      wake_up_all(&d->blockq);
-			      return r;
-			      }*/
-
 			}
 			if (r < 0){
 			  //eprintk("Signal received! Ticket is %u, ticket->tail is %u, ticket_head is %u. Read\n", cur_ticket, d->ticket_tail, d->ticket_head);
 			  //			  d->num_killed++;
 			  eprintk("Signal received in read!\n");
 			  if(cur_ticket == d->ticket_tail)
+			  {
   			    d->ticket_tail++;
-			  else if(d->killed_list_tail == NULL){
-			     d->killed_list_tail = temp;
+			    kfree(temp);
+			    eprintk("Freed %u\n", cur_ticket);
+			  }
+			  else if(d->killed_list == NULL){
+			    //d->killed_list_tail = temp;
 			     d->killed_list = temp;
+			     eprintk("Added %u to list\n", temp->ticket);
 			   }
 			  else {
-			     d->killed_list_tail->next = temp;
-			     d->killed_list_tail = d->killed_list_tail->next;
+			     struct num_list* prev = d->killed_list;
+			     a = d->killed_list->next;
+			     while(a != NULL && a->ticket < cur_ticket)
+			       {
+				 prev = a;
+				 a = a->next;
+			       }
+			     if(a == NULL)
+			       {
+				 if(cur_ticket < prev->ticket)
+				 {
+				   temp->next = prev;
+				   d->killed_list = temp;
+				 }
+				 else
+				   prev->next = temp;
+			       }
+			     else
+			     {
+			       temp->next = a;
+			       prev->next = temp;
+			     }
+
+			     //d->killed_list_tail->next = temp;
+			     //d->killed_list_tail = d->killed_list_tail->next;
+			     eprintk("Added %u to list\n", temp->ticket);
 			   }
 			  osp_spin_unlock(&d->mutex);
 			  //eprintk("Ticket tail = %u\n", d->ticket_tail);
@@ -377,12 +403,29 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			}
 			// eprintk("Locking acquire read mutex\n");
 			//osp_spin_lock(&d->mutex);
+			
+			a = d->pid_list;
+			struct num_list* pid_node;
+			pid_node = (struct num_list*) kmalloc(sizeof(struct num_list), GFP_ATOMIC);
+		        pid_node->ticket = current->pid;
+  		        pid_node->next = NULL;
+			while(a != NULL && a->ticket != current->pid && a->next != NULL)
+			  a = a->next;
+			if(a == NULL) {
+			  d->pid_list = pid_node;
+			  eprintk("Added a pid\n");
+			}
+			else
+			{
+			  a->next = pid_node;
+			  eprintk("Added a pid\n");
+			}
 			d->ticket_tail++;
 			eprintk("%u", cur_ticket);
 			//eprintk("Incrementing read, cur_ticket is %u\n", cur_ticket);
 			d->num_read++;
 			filp->f_flags |= F_OSPRD_LOCKED;
-			struct num_list* a = d->killed_list;
+			a = d->killed_list;
 			while(a != NULL)
 			  {
 			    eprintk("Found a ticket in read. Its ticket is %u and the current ticket is %u.\n", a->ticket, cur_ticket);
@@ -391,15 +434,21 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			      a = a->next;
 			      kfree(d->killed_list);
 			      d->killed_list = a;
-			      if(a == NULL)
-				d->killed_list_tail = NULL;
+			      eprintk("Did stuff in loop, ticket_tail is now %u\n", d->ticket_tail);
+			    }
+			    else if(a->ticket < d->ticket_tail)
+			    {
+			      a = a->next;
+			      kfree(d->killed_list);
+			      d->killed_list = a;
 			    }
 			    else
 			      a = a->next;
 			  }
 			osp_spin_unlock(&d->mutex);
 			kfree(temp);
-			eprintk("Acquire read unlocked\n");
+			//	eprintk("Returning; num_write is %u and num_read is %u.\nd->ticket_head is %u, and d->ticket_tail is %u.\n", d->num_write, d->num_read, d->ticket_head, d->ticket_tail);
+			//eprintk("Acquire read unlocked\n");
 		}
 		// EXERCISE: Lock the ramdisk.
 		//
@@ -492,24 +541,53 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		//		//eprintk("Check passed\n");
 		if(filp_writable)
 		  {
-		    eprintk("Release write: locking mutex\n");
+		    //eprintk("Release write: locking mutex\n");
 		    osp_spin_lock(&d->mutex);
 		    //eprintk("Release write: locked mutex\n");
 		    d->num_write = 0;
+		    d->write_pid = -1;
+		    if(d->num_read == 0)
 		    filp->f_flags ^= F_OSPRD_LOCKED;
 
 		    osp_spin_unlock(&d->mutex);
-		    eprintk("Release write: unlocked mutex, write is now %u.\n", d->num_write);
+		    //eprintk("Release write: unlocked mutex, write is now %u.\n", d->num_write);
 		  }
 		else
 		  {
-		    eprintk("Locking release read mutex\n");
+		    //eprintk("Locking release read mutex\n");
 		    osp_spin_lock(&d->mutex);
 		    //eprintk("Trying to decrement read: %u\n", d->num_read);
 		    if(d->num_read)
 		      d->num_read--;
-		    if(d->num_read == 0)
+		    if(d->num_read == 0 && d->num_write == 0)
 		      filp->f_flags ^= F_OSPRD_LOCKED;
+		    struct num_list* prev = NULL;
+		    a = d->pid_list;
+		    while(a != NULL && a->ticket != current->pid)
+		    {
+		      prev = a;
+		      a = a->next;
+		    }
+		    if(a == NULL)
+		      eprintk("No pids in list\n");
+		    else if(prev == NULL)
+		    {
+		      d->pid_list = a->next;
+		      kfree(a);
+		      eprintk("Freed a pid\n");
+		    }
+		    else if(a->next == NULL)
+		    {
+		      prev->next = NULL;
+		      kfree(a);
+		      eprintk("Freed a pid\n");
+		    }
+		    else
+		    {
+		      prev->next = a->next;
+		      kfree(a);
+		      eprintk("Freed a pid\n");
+		    }
 		    /*if(d->ticket_head == cur_ticket)
 		      {
 			if(d->num_killed) {
@@ -519,7 +597,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 			d->num_killed = 0;
 			}*/	     
 		      osp_spin_unlock(&d->mutex);
-		    eprintk("Release read: unlock mutex, num_read is now %u.\n", d->num_read);
+		      //eprintk("Release read: unlock mutex, num_read is now %u.\n", d->num_read);
 		  }
 
 
@@ -528,7 +606,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	} else
 		r = -ENOTTY; /* unknown command */
 	//eprintk("Returning from ioctl with %d\n", r);
-	
+	eprintk("Returning; num_write is %u and num_read is %u.\nd->ticket_head is %u, and d->ticket_tail is %u.\n", d->num_write, d->num_read, d->ticket_head, d->ticket_tail);
 	return r;
 }
 
@@ -544,9 +622,11 @@ static void osprd_setup(osprd_info_t *d)
 	d->num_read = 0;
 	d->num_write = 0;
 	d->num_killed = -1;
+	d->write_pid = -1;
 	d->killed_list = NULL;
-	d->killed_list_tail = NULL;
-	d->first = 1;
+	d->pid_list = NULL;
+	//	d->killed_list_tail = NULL;
+	//	d->first = 1;
 	/* Add code here if you add fields to osprd_info_t. */
 }
 

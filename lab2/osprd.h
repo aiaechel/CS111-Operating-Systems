@@ -10,5 +10,6 @@
 #define OSPRDDEAUTHORIZE        47
 
 #define MAX_PASS_LEN            17
+#define KEY_LENGTH              64
 
 #endif

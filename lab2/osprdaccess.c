@@ -17,8 +17,8 @@ Reads from or writes to an encrypted OSP ramdisk device.\n\
 Usage: ./osprdaccess -w [SIZE] [OPTIONS] [DEVICE...] < DATA\n\
    or: ./osprdaccess -w [SIZE] -z [DEVICE...]        (writes zeros)\n\
    or: ./osprdaccess -r [SIZE] [OPTIONS] [DEVICE...] > DATA\n\
-   or: ./osprdaccess -p [PASSWORD] [OPTIONS] [DEVICE...] \n\
-   Sets a new password for DEVICE. Default is no password.\n\
+   or: ./osprdaccess -p [OPTIONS] [DEVICE...] \n\
+   Sets a new password for DEVICE.\n\
    To change the password, you must be authorized (see -u option below)\n\
    SIZE is the number of bytes to read/write.  Default is whole file.\n\
    Options are:\n\
@@ -32,9 +32,10 @@ Usage: ./osprdaccess -w [SIZE] [OPTIONS] [DEVICE...] < DATA\n\
        -l would block, -L will return a \"resource busy\" error instead.\n\
    -d DELAY\n\
        Wait DELAY seconds before reading/writing (but after locking).\n\
-   -u [PASSWORD] Authorize the current process to decrypt the ramdisk.\n\
+   -u PASSWORD \n\
+       Authorize the current process to decrypt the ramdisk.\n\
        If not authorized, read output will be encrypted.\n\
-       Default for PASSWORD is empty string.\n\
+       If option is not given, program will prompt for a password, if one is set\n\
    DEVICE is the device to read/write.  The default is /dev/osprda.\n\
    You can also give more than one device name.  All devices are opened, but\n\
    only the last device is modified.\n");
@@ -137,7 +138,7 @@ int main(int argc, char *argv[])
 	int devfd, ofd;
 	int i, r, timeout = 0, zero = 0;
 	int mode = O_RDONLY, dolock = 0, dotrylock = 0;
-	int new_pass = 0;
+	int new_pass = 0, decrypt = 0;
 	ssize_t size = -1;
 	ssize_t offset = 0;
 	double delay = 0;
@@ -145,7 +146,9 @@ int main(int argc, char *argv[])
 	const char *devname = "/dev/osprda";
 	char decrypt_pass[MAX_PASS_LEN] = "";
 	char new_password[MAX_PASS_LEN] = "";
-
+	char c = '\0';
+	decrypt_pass[MAX_PASS_LEN - 1] = '\0';
+	fprintf(stderr, "BUFSIZ is %d\n", BUFSIZ);
  flag:
 	// Detect a read/write option
 	if (argc >= 2 && strcmp(argv[1], "-r") == 0) {
@@ -212,29 +215,17 @@ int main(int argc, char *argv[])
 	  //	      or if -p was already given for the same ramdisk
 	        new_pass = 1;	        
 		argv++, argc--;
-
-	        if(argc < 2 || argv[1][0] == '-' || argv[1][0] == '/')
-		   goto flag;  //If no password afterwards, then new
-		               //password is "" (empty string)
-		else if(strlen(argv[1]) > MAX_PASS_LEN - 1)
-		  usage(1);
-		else
-		{
-    		   strncpy(new_password, argv[1], MAX_PASS_LEN-1);
-		   fprintf(stderr, "Got password: %s\n", new_password);
-		   argv++, argc--;
-		}
-		  
 		goto flag;
 	}
 
 	// Detect the password unlock option
 	if(argc >= 2 && strcmp(argv[1], "-u") == 0) {		
+                decrypt = 1;
 		argv++, argc--;
 	        if(argc < 2 || argv[1][0] == '-' || argv[1][0] == '/')
 		   goto flag;
 		else if(strlen(argv[1]) > MAX_PASS_LEN - 1)
-		  usage(1);
+		  decrypt_pass[MAX_PASS_LEN - 1] = '7';
 		else
 		{
     		   strncpy(decrypt_pass, argv[1], MAX_PASS_LEN-1);
@@ -296,15 +287,47 @@ int main(int argc, char *argv[])
 	else if (mode & O_WRONLY)
 		transfer(STDIN_FILENO, devfd, size);
 	else {
-	  if(ioctl(devfd, OSPRDAUTHORIZE, decrypt_pass) < 0)
-	      perror("The following error occurred: ");
-	  if(new_pass) {
-	    if(ioctl(devfd, OSPRDSETPASS, new_password) < 0)
-	      perror("The following error occurred: ");
+	  if(!decrypt)
+	  {
+	    fprintf(stderr, "Password: ");
+	    while((c = getchar()) != '\n')
+	    {
+	      decrypt_pass[decrypt++] = c;
+	      if(decrypt == MAX_PASS_LEN) {
+		decrypt = 0;
+		break;
+	      }
+	    }
+	    decrypt_pass[decrypt] = '\0';
 	  }
+	  if(decrypt_pass[MAX_PASS_LEN - 1] == '\0'
+	     && ioctl(devfd, OSPRDAUTHORIZE, decrypt_pass) < 0)
+	      perror("The following error occurred: ");
+	  if(decrypt_pass[MAX_PASS_LEN - 1] != '\0')
+	      printf("Incorrect password\n");
+	  if(new_pass && decrypt_pass[MAX_PASS_LEN - 1] == '\0') {
+	    new_pass = 0;
+	    new_password[MAX_PASS_LEN - 1] = '\0';
+	    c = 0;
+	    fprintf(stderr, "New password: ");
+	    while((c = getchar()) != '\n')
+	    {
+	      new_password[new_pass++] = c;
+	      if(new_pass == MAX_PASS_LEN) {
+		fprintf(stderr, "Password can only be up to %d characters long.\n", MAX_PASS_LEN - 1);
+		new_pass = 0;
+		decrypt_pass[MAX_PASS_LEN - 1] = '5';
+	      }
+	    }
+	    new_password[new_pass] = '\0';
+	    if(decrypt_pass[MAX_PASS_LEN - 1] == '\0'
+	       && ioctl(devfd, OSPRDSETPASS, new_password) < 0)
+	      perror("The following error occurred: ");
+	    else
+	      fprintf(stderr, "New password has been set.\n");
+	  } 
 	  else
 	    transfer(devfd, STDOUT_FILENO, size);
-	  ioctl(devfd, OSPRDDEAUTHORIZE, NULL);
 	}
 
 	exit(0);

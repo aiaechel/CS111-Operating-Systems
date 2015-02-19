@@ -4,6 +4,11 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/crypto.h>
+#include <linux/random.h>
+#include <linux/fs.h>
+#include <asm/segment.h>
+#include <asm/uaccess.h>
+#include <linux/buffer_head.h>
 
 #include <linux/sched.h>
 #include <linux/kernel.h>  /* printk() */
@@ -74,7 +79,7 @@ typedef struct osprd_info {
         struct num_list* pid_list;
         struct num_list* auth_list;
         char passwd[MAX_PASS_LEN];
-
+        char key[KEY_LENGTH];
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
 	/* HINT: You may want to add additional fields to help
@@ -543,18 +548,23 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	}
 	else if(cmd == OSPRDSETPASS)
 	  {
+	    
 	    if(arg == 0)
 	      r = -ENOTTY;
 	    else
 	      {
+                char* buf = (char*) kmalloc(MAX_PASS_LEN, GFP_ATOMIC);
+		r = copy_from_user(buf, (const char __user*) arg, MAX_PASS_LEN);
+	        if(r) {
+		  kfree(buf);
+		  return -EFAULT;
+		}
 		osp_spin_lock(&d->mutex);
-		r = copy_from_user(d->passwd, (const char __user*) arg, MAX_PASS_LEN);
+		if(buf[MAX_PASS_LEN - 1] == '\0')
+		  memcpy(d->passwd, buf, MAX_PASS_LEN);
                 osp_spin_unlock(&d->mutex);
 		eprintk("Return value is %d, the string is %s\n", r, (char*) arg);
-	        if(r)
-		  r = -EFAULT;
-		else
-		  eprintk("Password is %s.\n", d->passwd);
+		kfree(buf);
 	      }
 	  }
 	else if(cmd == OSPRDAUTHORIZE)
@@ -571,6 +581,16 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	    osp_spin_lock(&d->mutex);
 	    flag = strcmp(buf, d->passwd);
 	    osp_spin_unlock(&d->mutex);
+	    if(flag)
+	    {
+	      buf[MAX_PASS_LEN - 1] = '8';
+	      r = copy_to_user((char __user*) arg, buf, MAX_PASS_LEN);
+	      if(r != 0)
+	      {
+		kfree(buf);
+		return -EFAULT;
+	      }
+	    }
 	    if(!flag)
 	    {
                 eprintk("Adding a pid\n");
@@ -646,6 +666,7 @@ static void osprd_setup(osprd_info_t *d)
 	d->killed_list = NULL;
 	d->pid_list = NULL;
 	d->auth_list = NULL;
+	get_random_bytes(d->key, KEY_LENGTH);
 	d->passwd[0] = '\0';
 	/* Add code here if you add fields to osprd_info_t. */
 }
@@ -669,6 +690,15 @@ static void osprd_process_request_queue(request_queue_t *q)
 }
 
 
+static void AxorB(char* a, char* b, int offset, unsigned size)
+{
+  int i;
+  for(i = 0; i < size; i++)
+  {
+    a[i] ^= b[i + offset];
+  }
+}
+
 // Some particularly horrible stuff to get around some Linux issues:
 // the Linux block device interface doesn't let a block device find out
 // which file has been closed.  We need this information.
@@ -686,11 +716,81 @@ static int _osprd_release(struct inode *inode, struct file *filp)
 
 static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, loff_t * loff)
 {
+  char* buf;
+  int copy_ret, sec_offset = (*loff) % KEY_LENGTH, sec_size = size, to_write = KEY_LENGTH - sec_offset;
+  osprd_info_t *d = file2osprd(filp);
+  if(!d)
+    return (*blkdev_read)(filp, usr, size, loff);
   ssize_t ret = (*blkdev_read)(filp, usr, size, loff);
+  //Check for authentication
+  
+  buf = (char*) kmalloc(size, GFP_KERNEL);
+  if(buf == NULL)
+    return -ENOMEM;
+  copy_ret = copy_from_user(buf, usr, size);
+  if(copy_ret)
+    {
+      kfree(buf);
+      return copy_ret;
+    }
+if(sec_offset)
+  {
+    AxorB(buf, d->key, sec_offset, to_write);
+    sec_size -= to_write;
+  }
+  sec_offset = sec_size / KEY_LENGTH;
+  while(sec_size > 0)
+  {
+    to_write = sec_offset ? KEY_LENGTH : sec_size;
+    AxorB(buf + (size - sec_size), d->key, 0, to_write);
+    sec_size -= to_write;
+    sec_offset--;
+  }
+  copy_ret = copy_to_user(usr, buf, size);
+  kfree(buf);
+  if(copy_ret)
+    return -1;
   return ret;
 }
 static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t size, loff_t * loff)
 {
+  char* buf;
+  int copy_ret, sec_offset = (*loff) % KEY_LENGTH, sec_size = size, to_write = KEY_LENGTH - sec_offset;
+  osprd_info_t *d = file2osprd(filp);
+  if(!d)
+    {
+      eprintk("d is NULL!\n");
+    return (*blkdev_write)(filp, usr, size, loff);
+    }
+  buf = (char*) kmalloc(size, GFP_KERNEL);
+  if(buf == NULL)
+    return -ENOMEM;
+  copy_ret = copy_from_user(buf, usr, size);
+  if(copy_ret)
+  {
+    kfree(buf);
+    return -1;
+  }
+  eprintk("Sec offset is %d, sec_size is %d\n", sec_offset, sec_size);
+  if(sec_offset)
+  {
+    AxorB(buf, d->key, sec_offset, to_write);
+    sec_size -= to_write;
+  }
+  sec_offset = sec_size / KEY_LENGTH;
+  eprintk("Before the loop, sec offset is %d\n", sec_offset);
+  while(sec_size > 0)
+  {
+    to_write = sec_offset ? KEY_LENGTH : sec_size;
+    AxorB(buf + (size - sec_size), d->key, 0, to_write);
+    sec_size -= to_write;
+    sec_offset--;
+  }
+  eprintk("The first couple of characters: %c%c%c\n", buf[0], buf[1], buf[2]);
+  copy_ret = copy_to_user(usr, buf, size);
+  kfree(buf);
+  if(copy_ret)
+    return -1;
   ssize_t ret = (*blkdev_write)(filp, usr, size, loff);
   return ret;
 }

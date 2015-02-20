@@ -8,6 +8,7 @@
 #define OSPRDSETPASS            45
 #define OSPRDAUTHORIZE          46
 #define OSPRDDEAUTHORIZE        47
+#define OSPRDPASSEXISTS         48
 
 #define MAX_PASS_LEN            17
 #define KEY_LENGTH              64

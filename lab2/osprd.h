@@ -12,4 +12,5 @@
 #define MAX_PASS_LEN            17
 #define KEY_LENGTH              64
 
+#define AES_KEY_LENGTH          16
 #endif

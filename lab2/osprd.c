@@ -4,11 +4,8 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/crypto.h>
+#include <linux/scatterlist.h>
 #include <linux/random.h>
-#include <linux/fs.h>
-#include <asm/segment.h>
-#include <asm/uaccess.h>
-#include <linux/buffer_head.h>
 
 #include <linux/sched.h>
 #include <linux/kernel.h>  /* printk() */
@@ -19,6 +16,10 @@
 #include <linux/blkdev.h>
 #include <linux/wait.h>
 #include <linux/file.h>
+#include <linux/fs.h>
+#include <asm/segment.h>
+#include <asm/uaccess.h>
+#include <linux/buffer_head.h>
 
 #include <asm/string.h>
 
@@ -38,6 +39,7 @@
  * kernel does not print all messages to the console.  Levels like KERN_ALERT
  * and KERN_EMERG will make sure that you will see messages.) */
 #define eprintk(format, ...) printk(KERN_NOTICE format, ## __VA_ARGS__)
+#define FILL_SG(sg, ptr, len)   do {(sg)->page = virt_to_page(ptr); (sg)->offset = offset_in_page(ptr); (sg)->length = len;} while(0)
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("CS 111 RAM Disk");
@@ -72,6 +74,7 @@ typedef struct osprd_info {
 					// the device lock
         unsigned num_read;
         unsigned num_write;
+        unsigned long written_sectors;
 
         pid_t write_pid;
 
@@ -80,6 +83,9 @@ typedef struct osprd_info {
         struct num_list* auth_list;
         char passwd[MAX_PASS_LEN];
         char key[KEY_LENGTH];
+        struct crypto_tfm * tfm;
+        char aes_key[AES_KEY_LENGTH];
+        char init_vector[AES_KEY_LENGTH];
 	wait_queue_head_t blockq;       // Wait queue for tasks blocked on
 					// the device lock
 	/* HINT: You may want to add additional fields to help
@@ -119,7 +125,6 @@ static void for_each_open_file(struct task_struct *task,
 						osprd_info_t *user_data),
 			       osprd_info_t *user_data);
 
-
 /*
  * osprd_process_request(d, req)
  *   Called when the user reads or writes a sector.
@@ -127,7 +132,8 @@ static void for_each_open_file(struct task_struct *task,
  */
 static void osprd_process_request(osprd_info_t *d, struct request *req)
 {
-	int sector_beg, write_size;
+        int sector_beg, write_size;
+        int current_write;
 	if (!blk_fs_request(req) || req->sector < 0 
 	    || req->sector > nsectors) {
 		end_request(req, 0);
@@ -147,9 +153,14 @@ static void osprd_process_request(osprd_info_t *d, struct request *req)
 	if(rq_data_dir(req) == READ)
 	  {
 	    memcpy(req->buffer, &(d->data[sector_beg]), write_size);
+	    /*for(current_write = 0; current_write < write_size; current_write += KEY_LENGTH)
+	      AxorB(req->buffer, d->key, 0, KEY_LENGTH, 0);*/
+
 	  }
 	else if(rq_data_dir(req) == WRITE)
 	  {
+	    /*for(current_write = 0; current_write < write_size; current_write += KEY_LENGTH)
+	      AxorB(req->buffer, d->key, 0, KEY_LENGTH, 0);*/
 	    memcpy(&(d->data[sector_beg]), req->buffer, write_size);
 	  }
 	else
@@ -199,7 +210,6 @@ static int osprd_close_last(struct inode *inode, struct file *filp)
 
 	return 0;
 }
-
 
 /*
  * osprd_lock
@@ -563,7 +573,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 		if(buf[MAX_PASS_LEN - 1] == '\0')
 		  memcpy(d->passwd, buf, MAX_PASS_LEN);
                 osp_spin_unlock(&d->mutex);
-		eprintk("Return value is %d, the string is %s\n", r, (char*) arg);
+		//		eprintk("Return value is %d, the string is %s\n", r, (char*) arg);
 		kfree(buf);
 	      }
 	  }
@@ -593,7 +603,7 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	    }
 	    if(!flag)
 	    {
-                eprintk("Adding a pid\n");
+	      //                eprintk("Adding a pid\n");
 		temp = (struct num_list*) kmalloc(sizeof(struct num_list), GFP_ATOMIC);
 		temp->ticket = current->pid;
 		temp->next = NULL;
@@ -629,19 +639,19 @@ int osprd_ioctl(struct inode *inode, struct file *filp,
 	    else if(temp == NULL)
 	    {
 	      d->auth_list = a->next;
-	      eprintk("Auth free\n");
+	      //eprintk("Auth free\n");
 	      kfree(a);
 	    }
 	    else if(a->next == NULL)
 	    {
 	      temp->next = NULL;
-	      eprintk("Auth free\n");
+	      //eprintk("Auth free\n");
 	      kfree(a);
 	    }
 	    else
 	    {
 	      temp->next = a->next;
-	      eprintk("Auth free\n");
+	      //eprintk("Auth free\n");
 	      kfree(a);
 	    }
 	    osp_spin_unlock(&d->mutex);
@@ -663,10 +673,16 @@ static void osprd_setup(osprd_info_t *d)
 	d->num_read = 0;
 	d->num_write = 0;
 	d->write_pid = -1;
+	d->written_sectors = 0;
 	d->killed_list = NULL;
 	d->pid_list = NULL;
 	d->auth_list = NULL;
 	get_random_bytes(d->key, KEY_LENGTH);
+	get_random_bytes(d->aes_key, AES_KEY_LENGTH);
+	get_random_bytes(d->init_vector, AES_KEY_LENGTH);
+	d->tfm = crypto_alloc_tfm("aes", CRYPTO_TFM_MODE_CTR);
+	if(d->tfm != NULL)
+	  crypto_cipher_setkey(d->tfm, d->aes_key, AES_KEY_LENGTH);
 	d->passwd[0] = '\0';
 	/* Add code here if you add fields to osprd_info_t. */
 }
@@ -689,13 +705,13 @@ static void osprd_process_request_queue(request_queue_t *q)
 		osprd_process_request(d, req);
 }
 
-
-static void AxorB(char* a, char* b, int offset, unsigned size)
+static void AxorB(char* a, char* b, int offset, unsigned size, int add)
 {
   int i;
   for(i = 0; i < size; i++)
   {
     a[i] ^= b[i + offset];
+    a[i] += add;
   }
 }
 
@@ -714,54 +730,222 @@ static int _osprd_release(struct inode *inode, struct file *filp)
 	return (*blkdev_release)(inode, filp);
 }
 
+static char* encrypt(osprd_info_t* d, int sec_num, int last_sec, char* buf)
+{
+  char init_vec[16];
+  int counter = 0;
+  struct scatterlist sg[2];
+  memcpy(init_vec, d->init_vector, AES_KEY_LENGTH);
+  counter = 0;
+  //  init_vec[0] += sec_num;
+  while(sec_num < last_sec + 1)
+  {
+    FILL_SG(&sg[0], buf + (counter++ << 4) , AES_KEY_LENGTH);
+    crypto_cipher_set_iv(d->tfm, init_vec, crypto_tfm_alg_ivsize(d->tfm));
+    crypto_cipher_encrypt(d->tfm, &sg[0], &sg[0], AES_KEY_LENGTH);
+    sec_num++;
+    //init_vec[0]++;
+  }
+
+}
+
+static void decrypt(osprd_info_t* d, int sec_num, int last_sec, char* buf)
+{
+  char init_vec[16];
+  int counter = 0;
+  struct scatterlist sg[2];
+  memcpy(init_vec, d->init_vector, AES_KEY_LENGTH);
+  counter = 0;
+  //  init_vec[0] += sec_num;
+  while(sec_num < last_sec + 1)
+  {
+    eprintk("In decrypt loop\n");
+    FILL_SG(&sg[0], buf + (counter++ << 4) , AES_KEY_LENGTH);
+    crypto_cipher_set_iv(d->tfm, init_vec, crypto_tfm_alg_ivsize(d->tfm));
+    crypto_cipher_decrypt(d->tfm, &sg[0], &sg[0], AES_KEY_LENGTH);
+    sec_num++;
+    //init_vec[0]++;
+  }
+
+}
+
 static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, loff_t * loff)
 {
   char* buf;
-  int copy_ret, sec_offset = (*loff) % KEY_LENGTH, sec_size = size, to_write = KEY_LENGTH - sec_offset;
+  int copy_ret;
+  loff_t old_off = *loff;
+  unsigned long sec_offset = old_off % KEY_LENGTH, sec_size = size;
+  unsigned to_write = KEY_LENGTH - sec_offset;
+  //int sec_num = old_off / 16, last_sec = (old_off + size) / 16;
+  //int new_size, counter;
+  loff_t new_offset;
+  //mm_segment_t oldfs = get_fs();
   osprd_info_t *d = file2osprd(filp);
+  struct num_list* node;
+  ssize_t ret;
   if(!d)
-    return (*blkdev_read)(filp, usr, size, loff);
-  ssize_t ret = (*blkdev_read)(filp, usr, size, loff);
+      return (*blkdev_read)(filp, usr, size, loff);
+
   //Check for authentication
-  
+  osp_spin_lock(&d->mutex);
+  node = d->auth_list;
+  while(node != NULL && node->ticket != current->pid)
+    node = node->next;
+  osp_spin_unlock(&d->mutex);
+  if(node == NULL)
+    return (*blkdev_read)(filp, usr, size, loff);
+  //  eprintk("Authenticated\n");
+  //new_offset = sec_num << 4;
+  //new_size = (last_sec + 1) << 4;
+  //  set_fs(get_ds());
   buf = (char*) kmalloc(size, GFP_KERNEL);
   if(buf == NULL)
     return -ENOMEM;
+  ret = (*blkdev_read)(filp, usr, size, loff);
   copy_ret = copy_from_user(buf, usr, size);
-  if(copy_ret)
+  if(copy_ret < 0)
     {
+      //set_fs(oldfs);
       kfree(buf);
       return copy_ret;
     }
-if(sec_offset)
+  /*decrypt(d, sec_num, last_sec, buf);
+  set_fs(oldfs);
+  if(copy_to_user(usr, buf + (old_off % 16), size) == 0) {
+  ret = size;
+  *loff = old_off + size;
+  }
+  else
   {
-    AxorB(buf, d->key, sec_offset, to_write);
+    eprintk("Copy to user failed!\n");
+    return -1;
+    }*/
+  if(sec_offset)
+  {
+    AxorB(buf, d->key, sec_offset, to_write, 0);
     sec_size -= to_write;
   }
   sec_offset = sec_size / KEY_LENGTH;
   while(sec_size > 0)
   {
     to_write = sec_offset ? KEY_LENGTH : sec_size;
-    AxorB(buf + (size - sec_size), d->key, 0, to_write);
+    AxorB(buf + (size - sec_size), d->key, 0, to_write, 0);
     sec_size -= to_write;
     sec_offset--;
   }
   copy_ret = copy_to_user(usr, buf, size);
   kfree(buf);
   if(copy_ret)
-    return -1;
+    return -1;/*
+  oldfs = get_fs();
+  set_fs(get_ds());
+  stuff_buf = (char*) kmalloc(KEY_LENGTH, GFP_USER);
+  if(stuff_buf == NULL)
+  {
+    eprintk("Stuff buf allocation failed!\n");
+    return -ENOMEM;
+  }
+  stuff_buf[0] = 'a';
+  stuff_buf[1] = 'b';
+  copy_ret = (*blkdev_read)(filp,  stuff_buf, KEY_LENGTH, &old_off);
+  if(copy_ret)
+  {
+    AxorB(stuff_buf, d->key, 0, KEY_LENGTH, 0);
+    eprintk("Block dev read %d things! They are %c and %c.\n", copy_ret, stuff_buf[0], stuff_buf[1]);
+    kfree(stuff_buf);
+  }
+  set_fs(oldfs);*/
   return ret;
 }
 static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t size, loff_t * loff)
 {
+  //eprintk("Starting write\n");
   char* buf;
-  int copy_ret, sec_offset = (*loff) % KEY_LENGTH, sec_size = size, to_write = KEY_LENGTH - sec_offset;
+  //char init_vec[16];
+  int copy_ret;
+  loff_t old_off = *loff;
+  struct scatterlist sg[2];
+  //int sec_num = old_off / 16, last_sec = (old_off + size) / 16;
+  //int new_size = size, counter;
+  //loff_t new_offset;
+  unsigned long sec_offset = old_off % KEY_LENGTH, sec_size = size;
+  unsigned to_write = KEY_LENGTH - sec_offset;
+
+  int ret;
+  //mm_segment_t oldfs = get_fs();
   osprd_info_t *d = file2osprd(filp);
   if(!d)
-    {
-      eprintk("d is NULL!\n");
+  {
     return (*blkdev_write)(filp, usr, size, loff);
+  }
+  /*  eprintk("d is not NULL\n");
+  new_offset = sec_num << 4;
+  new_size = (last_sec + 1) << 4;
+  set_fs(get_ds());
+  buf = (char*) kmalloc(new_size, GFP_USER);
+  if(buf == NULL)
+    return -ENOMEM;
+  eprintk("Malloc was successful\n");
+  copy_ret = (*blkdev_read)(filp, buf, new_size, &new_offset);
+  //  eprintk("Copy ret is %d.\n", copy_ret);
+  //
+  if(copy_ret < 0)
+    {
+      eprintk("Trying to read while in write failed!\n");
+      set_fs(oldfs);
+      kfree(buf);
+      return copy_ret;
     }
+  eprintk("copy_ret is: %d, new size is: %d\n", copy_ret, new_size);
+  decrypt(d, sec_num, last_sec, buf);
+  copy_from_user(buf + (old_off % 16), usr, size);
+  encrypt(d, sec_num, last_sec, buf);
+  ret = (*blkdev_write)(filp, buf + (old_off % 16), size, loff);
+  eprintk("blkdev_write returned with %d.\n", ret);
+  eprintk("The first couple of characters: %c | %c.\n", buf[0], buf[1]);
+  set_fs(oldfs);*/
+
+  /*  memcpy(init_vec, d->init_vector, AES_KEY_LENGTH);
+  if((size % 16) != 0)
+    new_size = ((size / 16) + 1) * 16;
+  buf = kmalloc(new_size, GFP_KERNEL);
+  copy_from_user(buf, usr, size);
+
+  FILL_SG(&sg[0], buf, new_size);
+  crypto_cipher_set_iv(d->tfm, d->init_vector, crypto_tfm_alg_ivsize(d->tfm));
+  crypto_cipher_encrypt(d->tfm, &sg[0], &sg[0], new_size);
+  copy_to_user(usr, buf, size);
+  eprintk("About to return from write\n");
+  return (*blkdev_write)(filp, usr, size, loff);*/
+
+
+  /*set_fs(get_ds());
+  buf = (char*) kmalloc(size, GFP_USER);
+  if(buf == NULL)
+    return -ENOMEM;
+  new_offset = sec_num << 4;
+  new_size = (last_sec + 1) << 4;
+  copy_ret = (*blkdev_read)(filp, buf, new_size, &new_offset);
+  if(copy_ret < 0)
+    {
+      set_fs(oldfs);
+      kfree(buf);
+      return copy_ret;
+    }
+  counter = 0;
+  init_vec[0] += sec_num;
+  while(sec_num < last_sec + 1)
+  {
+    FILL_SG(&sg[0], buf + (counter++ << 4) , AES_KEY_LENGTH);
+    crypto_cipher_set_iv(d->tfm, init_vec, crypto_tfm_alg_ivsize(d->tfm));
+    crypto_cipher_decrypt(d->tfm, &sg[0], &sg[0], AES_KEY_LENGTH);
+    sec_num++;
+    init_vec[0]++;
+  }
+  set_fs(oldfs);
+  copy_to_user(usr + (old_off % 16), buf, size);
+  ret = size;
+  *loff = old_off + size;*/
   buf = (char*) kmalloc(size, GFP_KERNEL);
   if(buf == NULL)
     return -ENOMEM;
@@ -771,27 +955,37 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
     kfree(buf);
     return -1;
   }
-  eprintk("Sec offset is %d, sec_size is %d\n", sec_offset, sec_size);
   if(sec_offset)
   {
-    AxorB(buf, d->key, sec_offset, to_write);
+    AxorB(buf, d->key, sec_offset, to_write, 0);
     sec_size -= to_write;
   }
   sec_offset = sec_size / KEY_LENGTH;
-  eprintk("Before the loop, sec offset is %d\n", sec_offset);
   while(sec_size > 0)
   {
     to_write = sec_offset ? KEY_LENGTH : sec_size;
-    AxorB(buf + (size - sec_size), d->key, 0, to_write);
+    AxorB(buf + (size - sec_size), d->key, 0, to_write, 0);
     sec_size -= to_write;
     sec_offset--;
   }
-  eprintk("The first couple of characters: %c%c%c\n", buf[0], buf[1], buf[2]);
   copy_ret = copy_to_user(usr, buf, size);
   kfree(buf);
   if(copy_ret)
-    return -1;
-  ssize_t ret = (*blkdev_write)(filp, usr, size, loff);
+  return -1;
+  /*sec_offset = 1;
+  to_write = *loff;
+  sec_size = size;
+  while (to_write > KEY_LENGTH){
+    to_write -= KEY_LENGTH;
+    sec_offset <<= 1;
+  }
+  while (sec_size >= 0) {
+    sec_size -= KEY_LENGTH;
+    to_write += sec_offset;
+    sec_offset <<= 1;
+  }
+  d->written_sectors |= to_write;*/
+  return (*blkdev_write)(filp, usr, size, loff);
   return ret;
 }
 static int _osprd_open(struct inode *inode, struct file *filp)
@@ -818,7 +1012,7 @@ static int _osprd_open_test(struct inode* inode, struct file *filp)
 
 static struct block_device_operations osprd_ops = {
 	.owner = THIS_MODULE,
-	.open = _osprd_open_test,
+	.open = _osprd_open,
 	// .release = osprd_release, // we must call our own release
 	.ioctl = osprd_ioctl
 };

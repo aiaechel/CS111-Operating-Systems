@@ -4,7 +4,6 @@
 #include <linux/moduleparam.h>
 #include <linux/init.h>
 #include <linux/crypto.h>
-#include <linux/scatterlist.h>
 #include <linux/random.h>
 
 #include <linux/sched.h>
@@ -681,8 +680,7 @@ static void osprd_setup(osprd_info_t *d)
 	get_random_bytes(d->aes_key, AES_KEY_LENGTH);
 	get_random_bytes(d->init_vector, AES_KEY_LENGTH);
 	d->tfm = crypto_alloc_tfm("aes", CRYPTO_TFM_MODE_CTR);
-	if(d->tfm != NULL)
-	  crypto_cipher_setkey(d->tfm, d->aes_key, AES_KEY_LENGTH);
+	crypto_cipher_setkey(d->tfm, d->aes_key, sizeof(d->aes_key));
 	d->passwd[0] = '\0';
 	/* Add code here if you add fields to osprd_info_t. */
 }
@@ -730,23 +728,30 @@ static int _osprd_release(struct inode *inode, struct file *filp)
 	return (*blkdev_release)(inode, filp);
 }
 
-static char* encrypt(osprd_info_t* d, int sec_num, int last_sec, char* buf)
+static void encrypt(osprd_info_t* d, int sec_num, int last_sec, char* buf)
 {
+  eprintk("In encrypt\n");
   char init_vec[16];
+  char buf_check[16] = "testing to seea";
   int counter = 0;
   struct scatterlist sg[2];
   memcpy(init_vec, d->init_vector, AES_KEY_LENGTH);
   counter = 0;
   //  init_vec[0] += sec_num;
+  eprintk("Before, first few chars were: %c | %c | %c\n", buf[0], buf[1], buf[2]);
+  FILL_SG(&sg[1], buf_check, 16);
   while(sec_num < last_sec + 1)
   {
-    FILL_SG(&sg[0], buf + (counter++ << 4) , AES_KEY_LENGTH);
+    FILL_SG(&sg[0], buf /*+ (counter++ << 4)*/ , 16);
+    
     crypto_cipher_set_iv(d->tfm, init_vec, crypto_tfm_alg_ivsize(d->tfm));
-    crypto_cipher_encrypt(d->tfm, &sg[0], &sg[0], AES_KEY_LENGTH);
+    crypto_cipher_encrypt(d->tfm, &sg[0], &sg[0], 16);
     sec_num++;
+    buf += (counter++ << 4);
     //init_vec[0]++;
   }
-
+  //  eprintk("After, first few chars are: %c | %c | %c\n", buf_check[0], buf_check[1], buf_check[2]);
+  eprintk("After, first few chars are: %c | %c | %c\n", buf[0], buf[1], buf[2]);
 }
 
 static void decrypt(osprd_info_t* d, int sec_num, int last_sec, char* buf)
@@ -757,16 +762,19 @@ static void decrypt(osprd_info_t* d, int sec_num, int last_sec, char* buf)
   memcpy(init_vec, d->init_vector, AES_KEY_LENGTH);
   counter = 0;
   //  init_vec[0] += sec_num;
+  eprintk("In decrypt. Sanity check: AES_KEY_LENGTH is %d\n", AES_KEY_LENGTH);
+  eprintk("Before, first few chars were: %c | %c | %c\n", buf[0], buf[1], buf[2]);
   while(sec_num < last_sec + 1)
   {
-    eprintk("In decrypt loop\n");
-    FILL_SG(&sg[0], buf + (counter++ << 4) , AES_KEY_LENGTH);
+    eprintk("In decrypt loop, counter is %d, sec_num is %d, last_sec is %d\n", counter, sec_num, last_sec);
+    FILL_SG(&sg[0], buf , AES_KEY_LENGTH);
     crypto_cipher_set_iv(d->tfm, init_vec, crypto_tfm_alg_ivsize(d->tfm));
     crypto_cipher_decrypt(d->tfm, &sg[0], &sg[0], AES_KEY_LENGTH);
     sec_num++;
+    buf += (counter++ << 4);
     //init_vec[0]++;
   }
-
+  eprintk("Now, first few chars are: %c | %c | %c\n", buf[0], buf[1], buf[2]);
 }
 
 static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, loff_t * loff)
@@ -774,12 +782,12 @@ static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, l
   char* buf;
   int copy_ret;
   loff_t old_off = *loff;
-  unsigned long sec_offset = old_off % KEY_LENGTH, sec_size = size;
-  unsigned to_write = KEY_LENGTH - sec_offset;
-  //int sec_num = old_off / 16, last_sec = (old_off + size) / 16;
-  //int new_size, counter;
+  //unsigned long sec_offset = old_off % KEY_LENGTH, sec_size = size;
+  //unsigned to_write = KEY_LENGTH - sec_offset;
+  int sec_num = old_off / 16, last_sec = (old_off + size) / 16;
+  int new_size, counter;
   loff_t new_offset;
-  //mm_segment_t oldfs = get_fs();
+  mm_segment_t oldfs = get_fs();
   osprd_info_t *d = file2osprd(filp);
   struct num_list* node;
   ssize_t ret;
@@ -795,32 +803,35 @@ static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, l
   if(node == NULL)
     return (*blkdev_read)(filp, usr, size, loff);
   //  eprintk("Authenticated\n");
-  //new_offset = sec_num << 4;
-  //new_size = (last_sec + 1) << 4;
-  //  set_fs(get_ds());
-  buf = (char*) kmalloc(size, GFP_KERNEL);
+  eprintk("Old offset is %lld, old size is %d\n", *loff, size);
+  new_offset = sec_num << 4;
+  new_size = (last_sec + 1) << 4;
+  eprintk("New offset is %lld, new size is %d\n", new_offset, new_size);
+  set_fs(get_ds());
+
+  buf = (char*) kmalloc(new_size, GFP_USER);
   if(buf == NULL)
     return -ENOMEM;
-  ret = (*blkdev_read)(filp, usr, size, loff);
-  copy_ret = copy_from_user(buf, usr, size);
+  copy_ret = (*blkdev_read)(filp, buf, new_size, &new_offset);
+  //  copy_ret = copy_from_user(buf, usr, size);
   if(copy_ret < 0)
     {
-      //set_fs(oldfs);
+      set_fs(oldfs);
       kfree(buf);
       return copy_ret;
     }
-  /*decrypt(d, sec_num, last_sec, buf);
+  decrypt(d, sec_num, last_sec, buf);
   set_fs(oldfs);
   if(copy_to_user(usr, buf + (old_off % 16), size) == 0) {
-  ret = size;
-  *loff = old_off + size;
+    ret = size;
+    *loff = old_off + size;
   }
   else
   {
     eprintk("Copy to user failed!\n");
     return -1;
-    }*/
-  if(sec_offset)
+    }
+  /*if(sec_offset)
   {
     AxorB(buf, d->key, sec_offset, to_write, 0);
     sec_size -= to_write;
@@ -836,8 +847,8 @@ static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, l
   copy_ret = copy_to_user(usr, buf, size);
   kfree(buf);
   if(copy_ret)
-    return -1;/*
-  oldfs = get_fs();
+    return -1;*/
+  /*oldfs = get_fs();
   set_fs(get_ds());
   stuff_buf = (char*) kmalloc(KEY_LENGTH, GFP_USER);
   if(stuff_buf == NULL)
@@ -865,20 +876,20 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
   int copy_ret;
   loff_t old_off = *loff;
   struct scatterlist sg[2];
-  //int sec_num = old_off / 16, last_sec = (old_off + size) / 16;
-  //int new_size = size, counter;
-  //loff_t new_offset;
-  unsigned long sec_offset = old_off % KEY_LENGTH, sec_size = size;
-  unsigned to_write = KEY_LENGTH - sec_offset;
+  int sec_num = old_off / 16, last_sec = (old_off + size) / 16;
+  int new_size = size, counter;
+  loff_t new_offset;
+  //unsigned long sec_offset = old_off % KEY_LENGTH, sec_size = size;
+  //unsigned to_write = KEY_LENGTH - sec_offset;
 
   int ret;
-  //mm_segment_t oldfs = get_fs();
+  mm_segment_t oldfs = get_fs();
   osprd_info_t *d = file2osprd(filp);
   if(!d)
   {
     return (*blkdev_write)(filp, usr, size, loff);
   }
-  /*  eprintk("d is not NULL\n");
+  eprintk("d is not NULL\n");
   new_offset = sec_num << 4;
   new_size = (last_sec + 1) << 4;
   set_fs(get_ds());
@@ -902,9 +913,8 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
   encrypt(d, sec_num, last_sec, buf);
   ret = (*blkdev_write)(filp, buf + (old_off % 16), size, loff);
   eprintk("blkdev_write returned with %d.\n", ret);
-  eprintk("The first couple of characters: %c | %c.\n", buf[0], buf[1]);
-  set_fs(oldfs);*/
-
+  set_fs(oldfs);
+  return ret;
   /*  memcpy(init_vec, d->init_vector, AES_KEY_LENGTH);
   if((size % 16) != 0)
     new_size = ((size / 16) + 1) * 16;
@@ -918,8 +928,8 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
   eprintk("About to return from write\n");
   return (*blkdev_write)(filp, usr, size, loff);*/
 
-
-  /*set_fs(get_ds());
+  /*
+  set_fs(get_ds());
   buf = (char*) kmalloc(size, GFP_USER);
   if(buf == NULL)
     return -ENOMEM;
@@ -946,7 +956,7 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
   copy_to_user(usr + (old_off % 16), buf, size);
   ret = size;
   *loff = old_off + size;*/
-  buf = (char*) kmalloc(size, GFP_KERNEL);
+  /*buf = (char*) kmalloc(size, GFP_KERNEL);
   if(buf == NULL)
     return -ENOMEM;
   copy_ret = copy_from_user(buf, usr, size);
@@ -971,7 +981,7 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
   copy_ret = copy_to_user(usr, buf, size);
   kfree(buf);
   if(copy_ret)
-  return -1;
+  return -1;*/
   /*sec_offset = 1;
   to_write = *loff;
   sec_size = size;
@@ -985,7 +995,6 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
     sec_offset <<= 1;
   }
   d->written_sectors |= to_write;*/
-  return (*blkdev_write)(filp, usr, size, loff);
   return ret;
 }
 static int _osprd_open(struct inode *inode, struct file *filp)

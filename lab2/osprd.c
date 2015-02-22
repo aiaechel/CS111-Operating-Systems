@@ -780,7 +780,6 @@ static ssize_t _osprd_read(struct file * filp, char __user * usr, size_t size, l
   unsigned long sec_offset = old_off % KEY_LENGTH;
   long sec_size = size;
   unsigned to_write = KEY_LENGTH - sec_offset;
-  loff_t new_offset;
   osprd_info_t *d = file2osprd(filp);
   struct num_list* node;
   ssize_t ret;
@@ -843,7 +842,6 @@ static ssize_t _osprd_write(struct file * filp, const char __user * usr, size_t 
   long sec_size = size;
   unsigned to_write = KEY_LENGTH - sec_offset;
 
-  int ret;
   osprd_info_t *d = file2osprd(filp);
   if(!d)
     return (*blkdev_write)(filp, usr, size, loff);

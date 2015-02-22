@@ -139,7 +139,7 @@ int main(int argc, char *argv[])
 {
 	char *newarg;
 	int devfd, ofd;
-	int timeout = 0, zero = 0;
+	int timeout = 0, zero = 0, pass = 0;
 	int mode = O_RDONLY, dolock = 0, dotrylock = 0;
 	int new_pass = 0, decrypt = 0;
 	ssize_t size = -1;
@@ -291,6 +291,15 @@ int main(int argc, char *argv[])
 	else if (mode & O_WRONLY)
 		transfer(STDIN_FILENO, devfd, size);
 	else {
+	  if(ioctl(devfd, OSPRDPASSEXISTS, &pass) >= 0)
+	  {
+	    if(!pass) {
+	      decrypt = 1;
+	      decrypt_pass[MAX_PASS_LEN - 1] = '\0';
+	    }
+	  }
+	  else
+	    perror("This error happened: ");
 	  if(!decrypt)
 	  {
 	    fprintf(stderr, "Password: ");

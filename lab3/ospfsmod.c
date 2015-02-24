@@ -618,22 +618,22 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 static uint32_t
 allocate_block(void)
 {
-/* EXERCISE: Your code here 
-   Get data at first block of bitmap
-   start counter at first block# of bitmap
-   loop
-     until reach first block of inode
-     loop for each bit of current block of data
-        find a 1
-        if find
-	  set to 0
-	  return counter + current bit #
-     exited inner loop here, add block size to counter
-     (this is because we need to get the next block of the bitmap data)
-   exited outer loop here, return 0 because failed to find empty
-*/
-  
-  return 0; //if disk is full
+	/* EXERCISE: Your code here */
+  uint32_t hold;
+  uint32_t empty_block;
+  for(hold = 2; hold < ospfs_super->os_firstinob; hold++)
+    {
+      for(empty_block = 0; empty_block < 1024; empty_block++)
+	{
+	  if(bitvector_test(ospfs_block(hold), empty_block) == 1)//found free block
+	    {
+	      bitvector_clear(ospfs_block(hold), empty_block);//mark as allocated(0)
+	      eprintk("free block %u found\n", empty_block + (1024*(hold - 2)));
+	      return (empty_block + (1024*(hold - 2))); //return the block number
+	    }
+	}
+    }
+  return 0; //disk is full
 }
 
 
@@ -652,6 +652,19 @@ static void
 free_block(uint32_t blockno)
 {
 	/* EXERCISE: Your code here */
+  uint32_t start_data = ospfs_super->os_firstinob + ospfs_super->os_ninodes;
+  uint32_t bitmap_blk = 0;
+  uint32_t bitmap_pos = blockno;
+  if(blockno < start_data)
+    return -1; //ERROR.............................................
+
+  while(blockno > 1023)
+    {
+      bitmap_pos -= 1024;
+      bitmap_blk++;
+    }
+  bitvector_set(ospfs_block(2+bitmap_blk), bitmap_pos); //mark as free block(1)
+  eprintk("freed? %u\n", bitvector_test(ospfs_block(2+bitmap_blk), bitmap_pos));
 }
 
 

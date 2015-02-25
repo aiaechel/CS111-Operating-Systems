@@ -1039,22 +1039,40 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 	int block_count = 0;
 	int r = 0;
 
-	while (old_size_blocks < new_size_blocks) {
+	while (old_size_blocks + (block_count << OSPFS_BLKSIZE_BITS) < new_size_blocks) {
 	        /* EXERCISE: Your code here */
-		//return -EIO; Replace this line
+	  r = add_block(oi);
+	  block_count++;
+	  if(r < 0)
+	    goto abort;
 	}
-	while (old_size_blocks > new_size_blocks) {
+	if(!block_count)
+	  while (old_size_blocks > new_size_blocks + (block_count << OSPFS_BLKSIZE_BITS)) {
 	        /* EXERCISE: Your code here */
-		//return -EIO; // Replace this line
-	}
+	    r = remove_block(oi);
+	    block_count++;
+	    if(r < 0)
+	      goto abort;
+	  }
 
 	/* EXERCISE: Make sure you update necessary file meta data
 	             and return the proper value. */
 	oi->oi_size = new_size;
-	return 0; // Replace this line
+	return 0;
 
  abort:
-	
+	if(r == -ENOSPC) {
+	  while(block_count > 0)
+	  {
+	    if(remove_block(oi) < 0)
+	    {
+	      r = -EIO;
+	      break;
+	    }
+	    block_count--;
+	  }
+	}
+	return r;
 }
 
 

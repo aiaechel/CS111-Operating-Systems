@@ -1307,6 +1307,30 @@ find_direntry(ospfs_inode_t *dir_oi, const char *name, int namelen)
 static ospfs_direntry_t *
 create_blank_direntry(ospfs_inode_t *dir_oi)
 {
+  ospfs_direntry_t* ret;
+  int i, j, err_num;
+  uint32_t num_blocks = ospfs_size2nblocks(dir_oi->oi_size);
+  if(num_blocks <= OSPFS_NDIRECT)
+  {
+    for(i = 0; i < num_blocks; i++)
+    {
+      ret = (ospfs_direntry_t*) ospfs_block(dir_oi->oi_direct[i]);
+      for(j = 0; j < OSPFS_BLKSIZE / OSPFS_DIRENTRY_SIZE; j++)
+      {
+	if(ret[j].od_ino == 0)
+	  return &ret[j];
+      }
+    }
+    err_num = add_block(dir_oi);
+    if(err_num < 0)
+      return ERR_PTR(err_num);
+    ret = (ospfs_direntry_t*) ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_BLKSIZE);
+    return ret;
+  }
+  else if(num_blocks <= OSPFS_NDIRECT + OSPFS_NINDIRECT)
+  {
+    
+  }
 	// Outline:
 	// 1. Check the existing directory data for an empty entry.  Return one
 	//    if you find it.
@@ -1315,7 +1339,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 	//    entries and return one of them.
 
 	/* EXERCISE: Your code here. */
-	return ERR_PTR(-EINVAL); // Replace this line
+	//return ERR_PTR(-EINVAL); // Replace this line
 }
 
 // ospfs_link(src_dentry, dir, dst_dentry
@@ -1350,7 +1374,20 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
 static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
 	/* EXERCISE: Your code here. */
-	return -EINVAL;
+        ospfs_inode_t* directory = ospfs_inode(dir->i_ino);
+	ospfs_inode_t* src_inode = ospfs_inode(src_dentry->d_inode->i_ino);
+	int r = 0;
+	// Check if the name of the destination is too long
+	if (dst_dentry->d_name.len > OSPFS_MAXNAMELEN)
+	  return -ENAMETOOLONG;
+	// Check if the destination name already exists
+	if(find_direntry(directory, dst_dentry->d_name.name, dst_dentry->d_name.len))
+	   return -EEXIST;
+	
+	eprintk("Destination inode number is: %d\n");
+	// Set inode number of destination to source inode number
+	dst_dentry->d_inode->i_ino = src_dentry->d_inode->i_ino;
+	return r;
 }
 
 // ospfs_create
@@ -1387,6 +1424,7 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 {
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
+	eprintk("In create\n");
 	/* EXERCISE: Your code here. */
 	return -EINVAL; // Replace this line
 

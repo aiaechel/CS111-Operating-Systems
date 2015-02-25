@@ -656,7 +656,7 @@ free_block(uint32_t blockno)
   uint32_t bitmap_blk = 0;
   uint32_t bitmap_pos = blockno;
   if(blockno < start_data)
-    return -1; //ERROR.............................................
+    return; //ERROR.............................................
 
   while(blockno > 1023)
     {
@@ -795,7 +795,6 @@ add_block(ospfs_inode_t *oi)
 	{
 	  oi->oi_direct[n] = new_block;
 	}
-
 	// or put new block in indirect block, if there is space
 	else if(n < OSPFS_NINDIRECT + OSPFS_NDIRECT) {
 
@@ -806,7 +805,7 @@ add_block(ospfs_inode_t *oi)
 	    if(indirect == 0)
 	    {
 	      free_block(new_block);
-	      return -ENOMEM;
+	      return -ENOSPC;
 	    }
 	    oi->oi_indirect = indirect;
 	  }
@@ -824,7 +823,7 @@ add_block(ospfs_inode_t *oi)
 	    if(indirect2 == 0)
 	    {
 	      free_block(new_block);
-	      return -ENOMEM;
+	      return -ENOSPC;
 	    }
 	    oi->oi_indirect2 = indirect2;
 	  }
@@ -839,7 +838,7 @@ add_block(ospfs_inode_t *oi)
 	    if(indirect == 0){
 	      free_block(indirect2);
 	      free_block(new_block);
-	      return -ENOMEM;
+	      return -ENOSPC;
 	    }
 	    block_contents[0] = indirect;
 
@@ -849,7 +848,7 @@ add_block(ospfs_inode_t *oi)
 	    block_contents[0] = new_block;
 
 	    // Update the inode's size variable
-	    oi->oi_size += OSPFS_BLKSIZE;
+	    oi->oi_size = (n + 1) * OSPFS_BLKSIZE;
 	    return 0;
 	  }
 
@@ -868,13 +867,13 @@ add_block(ospfs_inode_t *oi)
 	    if(block_contents[i] == 0)
 	      break;
 	  
-	  // If the last block is already filled, gotta go make a new entry
-	  // in the doubly indirect block
+	  // If the last block is already filled, gotta go make a new
+	  // entry in the doubly indirect block
 	  if(i == OSPFS_NINDIRECT) {
 	    indirect = allocate_block();
 	    if(indirect == 0) {
 	      free_block(new_block);
-	      return -ENOMEM;
+	      return -ENOSPC;
 	    }
 
 	    // Place new block into new indirect block
@@ -897,7 +896,7 @@ add_block(ospfs_inode_t *oi)
 	}
 
 	// Update the inode size
-	oi->oi_size += OSPFS_BLKSIZE;
+	oi->oi_size = (n + 1) * OSPFS_BLKSIZE;
 	return 0;
 	/* EXERCISE: Your code here */
 }
@@ -930,9 +929,68 @@ remove_block(ospfs_inode_t *oi)
 {
 	// current number of blocks in file
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
-
+	uint32_t* block_contents;
+	int i, j;
 	/* EXERCISE: Your code here */
-	return -EIO; // Replace this line
+	if(n == 0)
+	  return 0;
+	if(n <= OSPFS_NDIRECT)
+	{
+	  if(oi->oi_direct[n - 1])
+	    free_block(oi->oi_direct[n - 1]);
+	  oi->oi_direct[n - 1] = 0;
+	}
+	else if(n <= OSPFS_NINDIRECT)
+	{
+	  if(oi->oi_indirect == 0)
+	    return -EIO;
+	  block_contents = (uint32_t*) ospfs_block(oi->oi_indirect);
+	  if(n == OSPFS_NDIRECT + 1) {
+	    free_block(block_contents[0]);
+	    block_contents[0] = 0;
+	    free_block(oi->oi_indirect);
+	    oi->oi_indirect = 0;
+	    oi->oi_size = (n - 1) * OSPFS_BLKSIZE;
+	    return 0;
+	  }
+	  i = n - OSPFS_NDIRECT - 1;
+	  free_block(block_contents[i]);
+	  block_contents[i] = 0;
+	}
+	else if(n <= OSPFS_MAXFILEBLKS)
+	{
+	  if(oi->oi_indirect2 == 0)
+	    return -EIO;
+	  j = n - OSPFS_NDIRECT - OSPFS_NINDIRECT - 1;
+	  j %= OSPFS_NINDIRECT;
+	  block_contents = (uint32_t*) ospfs_block(oi->oi_indirect2);
+	  for(i = 0; i < OSPFS_NINDIRECT; i++)
+	  {
+	    if(block_contents[i] == 0)
+	      break;
+	  }
+	  if(i == 0)
+	    return -EIO;
+	  block_contents = (uint32_t*) ospfs_block(block_contents[i - 1]);
+	  free_block(block_contents[j]);
+	  block_contents[j] = 0;
+	  if(j == 0) {
+	    block_contents = (uint32_t*) ospfs_block(oi->oi_indirect2);
+	    free_block(block_contents[i - 1]);
+	    block_contents[i - 1] = 0;
+	    if(i == 1)
+	    {
+	      free_block(block_contents[0]);
+	      block_contents[0] = 0;
+	      free_block(oi->oi_indirect2);
+	      oi->oi_indirect2 = 0;
+	    }
+	  }
+	}
+	else
+	  return -EIO;
+	oi->oi_size = (n - 1) * OSPFS_BLKSIZE;
+	return 0;
 }
 
 
@@ -976,20 +1034,27 @@ static int
 change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
 	uint32_t old_size = oi->oi_size;
+	uint32_t old_size_blocks = ospfs_size2nblocks(oi->oi_size);
+	uint32_t new_size_blocks = ospfs_size2nblocks(new_size);
+	int block_count = 0;
 	int r = 0;
 
-	while (ospfs_size2nblocks(oi->oi_size) < ospfs_size2nblocks(new_size)) {
+	while (old_size_blocks < new_size_blocks) {
 	        /* EXERCISE: Your code here */
-		return -EIO; // Replace this line
+		//return -EIO; Replace this line
 	}
-	while (ospfs_size2nblocks(oi->oi_size) > ospfs_size2nblocks(new_size)) {
+	while (old_size_blocks > new_size_blocks) {
 	        /* EXERCISE: Your code here */
-		return -EIO; // Replace this line
+		//return -EIO; // Replace this line
 	}
 
 	/* EXERCISE: Make sure you update necessary file meta data
 	             and return the proper value. */
-	return -EIO; // Replace this line
+	oi->oi_size = new_size;
+	return 0; // Replace this line
+
+ abort:
+	
 }
 
 

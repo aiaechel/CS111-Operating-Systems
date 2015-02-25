@@ -787,7 +787,7 @@ add_block(ospfs_inode_t *oi)
 	uint32_t new_block = allocate_block();
 	if(new_block == 0)
 	  return -ENOSPC;
-	block_contents = (uint32*) ospfs_block(new_block);
+	block_contents = (uint32_t*) ospfs_block(new_block);
 	memset(block_contents, 0, OSPFS_BLKSIZE);
 
 	// If there is space in the direct block array, put new block there
@@ -846,7 +846,7 @@ add_block(ospfs_inode_t *oi)
 	    // Finally, put the new block into the new indirect block
 	    block_contents = (uint32_t*) ospfs_block(indirect);
 	    memset(block_contents, 0, OSPFS_BLKSIZE);
-	    ospfs_block[0] = new_block;
+	    block_contents[0] = new_block;
 
 	    // Update the inode's size variable
 	    oi->oi_size += OSPFS_BLKSIZE;
@@ -879,7 +879,7 @@ add_block(ospfs_inode_t *oi)
 
 	    // Place new block into new indirect block
 	    block_contents = (uint32_t*) ospfs_block(indirect);
-	    memset(block_contents, 0, OSPFS_BLK_SIZE);
+	    memset(block_contents, 0, OSPFS_BLKSIZE);
 	    block_contents[0] = new_block;
 
 	    // Add new indirect block into doubly indirect block

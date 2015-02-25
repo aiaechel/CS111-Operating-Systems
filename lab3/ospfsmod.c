@@ -1327,7 +1327,7 @@ create_blank_direntry(ospfs_inode_t *dir_oi)
     ret = (ospfs_direntry_t*) ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_BLKSIZE);
     return ret;
   }
-  else if(num_blocks <= OSPFS_NDIRECT + OSPFS_NINDIRECT)
+  if(num_blocks <= OSPFS_NDIRECT + OSPFS_NINDIRECT)
   {
     
   }

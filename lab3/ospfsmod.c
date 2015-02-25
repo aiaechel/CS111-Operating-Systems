@@ -1200,12 +1200,14 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 static ssize_t
 ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
+  eprintk("Hello\n");
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
 	size_t amount = 0;
 
 	// Support files opened with the O_APPEND flag.  To detect O_APPEND,
 	// use struct file's f_flags field and the O_APPEND bit.
+	
 	/* EXERCISE: Your code here */
 	if(!(filp->f_flags & O_APPEND))
 	  return -1; //ERROR, O_APPEND not detected
@@ -1215,8 +1217,11 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	/* EXERCISE: Your code here */
 	if(*f_pos + count > oi->oi_size) //writing past end of file
 	  {
-	    //change_size();
+	    eprintk("change size b/c: %u\n", *f_pos + count);
+	    if(change_size(oi, *f_pos + count) < 0)
+	      return -1; //size not successfully changed
 	  }
+
 	// Copy data block by block
 	while (amount < count && retval >= 0) {
 		uint32_t blockno = ospfs_inode_blockno(oi, *f_pos);
@@ -1229,7 +1234,7 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 		}
 
 		data = ospfs_block(blockno);
-
+		n = count;
 		// Figure out how much data is left in this block to write.
 		// Copy data from user space. Return -EFAULT if unable to read
 		// read user space.
@@ -1424,9 +1429,44 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 {
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
 	uint32_t entry_ino = 0;
-	eprintk("In create\n");
+	ospfs_direntry_t *od;
 	/* EXERCISE: Your code here. */
-	return -EINVAL; // Replace this line
+	//return -EINVAL; // Replace this line
+
+	if(dentry->d_name.len > (OSPFS_DIRENTRY_SIZE - 5)) //filename too big
+	  return -ENAMETOOLONG;
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL)
+	  return -EEXIST; //name already exists
+	else
+	  {
+	    od = create_blank_direntry(dir_oi);
+	    if (IS_ERR(od))
+	      return PTR_ERR(od); //error pointer returned
+	  }
+
+	//find an empty inode
+	uint32_t j;
+	for(j = 2; j < (ospfs_super->os_ninodes*16); j++)
+	  {
+	    ospfs_inode_t *emp_inode = ospfs_inode(j);
+	    if(emp_inode->oi_nlink == 0)//found empty inode
+	      {
+		//initialize inode 
+		emp_inode->oi_nlink = 1;
+		emp_inode->oi_ftype = OSPFS_FTYPE_REG;
+		//end of initialization
+		entry_ino = j;
+		break;
+	      }
+	  }
+
+	//initialize directory entry
+	uint32_t k;
+	for(k = 0; k < dentry->d_name.len; k++)
+	  {
+	    od->od_name[k] = dentry->d_name.name[k];
+	  }
+	 od->od_ino = entry_ino;    
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before

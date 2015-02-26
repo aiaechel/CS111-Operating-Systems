@@ -1313,29 +1313,51 @@ static ospfs_direntry_t *
 create_blank_direntry(ospfs_inode_t *dir_oi)
 {
   ospfs_direntry_t* ret;
-  int i, j, err_num;
+  int cur_block, i, j, k, err_num;
   uint32_t num_blocks = ospfs_size2nblocks(dir_oi->oi_size);
-  if(num_blocks <= OSPFS_NDIRECT)
-  {
-    for(i = 0; i < num_blocks; i++)
+  uint32_t* indirect, *indirect2;
+  for(cur_block = 0; cur_block < OSPFS_NDIRECT && cur_block < num_blocks; cur_block++)
     {
-      ret = (ospfs_direntry_t*) ospfs_block(dir_oi->oi_direct[i]);
+      ret = (ospfs_direntry_t*) ospfs_block(dir_oi->oi_direct[cur_block]);
       for(j = 0; j < OSPFS_BLKSIZE / OSPFS_DIRENTRY_SIZE; j++)
       {
 	if(ret[j].od_ino == 0)
 	  return &ret[j];
       }
     }
-    err_num = add_block(dir_oi);
-    if(err_num < 0)
-      return ERR_PTR(err_num);
-    ret = (ospfs_direntry_t*) ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_BLKSIZE);
-    return ret;
-  }
-  if(num_blocks <= OSPFS_NDIRECT + OSPFS_NINDIRECT)
+  if(cur_block < num_blocks)
+    indirect = (uint32_t*) ospfs_block(dir_oi->oi_indirect);
+  for(i = 0; i < OSPFS_NINDIRECT && cur_block < num_blocks; i++, cur_block++)
   {
-    
+      ret = (ospfs_direntry_t*) ospfs_block(indirect[i]);
+      for(j = 0; j < OSPFS_BLKSIZE / OSPFS_DIRENTRY_SIZE; j++)
+      {
+	if(ret[j].od_ino == 0)
+	  return &ret[j];
+      }
   }
+  if(cur_block < num_blocks)
+    indirect2 = (uint32_t*) ospfs_block(dir_oi->oi_indirect2);
+  for(i = 0; i < OSPFS_NINDIRECT && cur_block < num_blocks; i++)
+  {
+    indirect = (uint32_t*) ospfs_block(dir_oi->oi_indirect);
+    for(j = 0; j < OSPFS_NINDIRECT && cur_block < num_blocks; j++, cur_block++)
+    {
+      ret = (ospfs_direntry_t*) ospfs_block(indirect[i]);
+      for(k = 0; k < OSPFS_BLKSIZE / OSPFS_DIRENTRY_SIZE; k++)
+      {
+	if(ret[k].od_ino == 0)
+	  return &ret[k];
+      }	
+    }
+  }
+  err_num = add_block(dir_oi);
+  if(err_num < 0)
+    return ERR_PTR(err_num);
+  ret = (ospfs_direntry_t*) ospfs_inode_data(dir_oi, dir_oi->oi_size - OSPFS_BLKSIZE);
+  return ret;
+
+  
 	// Outline:
 	// 1. Check the existing directory data for an empty entry.  Return one
 	//    if you find it.
@@ -1380,7 +1402,8 @@ static int
 ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dentry) {
 	/* EXERCISE: Your code here. */
         ospfs_inode_t* directory = ospfs_inode(dir->i_ino);
-	ospfs_inode_t* src_inode = ospfs_inode(src_dentry->d_inode->i_ino);
+	uint32_t src_i_ino = src_dentry->d_inode->i_ino;
+	ospfs_direntry_t* dest_direntry;
 	int r = 0;
 	// Check if the name of the destination is too long
 	if (dst_dentry->d_name.len > OSPFS_MAXNAMELEN)
@@ -1388,10 +1411,15 @@ ospfs_link(struct dentry *src_dentry, struct inode *dir, struct dentry *dst_dent
 	// Check if the destination name already exists
 	if(find_direntry(directory, dst_dentry->d_name.name, dst_dentry->d_name.len))
 	   return -EEXIST;
-	
-	eprintk("Destination inode number is: %d\n");
+	dest_direntry = create_blank_direntry(directory);
+	if(IS_ERR(dest_direntry)) 
+	  return PTR_ERR(dest_direntry);
+        dest_direntry->od_ino = src_i_ino;
+	memcpy(dest_direntry->od_name, dst_dentry->d_name.name, dst_dentry->d_name.len);
+	dest_direntry->od_name[dst_dentry->d_name.len] = '\0';
+	ospfs_inode(src_i_ino)->oi_nlink++;
 	// Set inode number of destination to source inode number
-	dst_dentry->d_inode->i_ino = src_dentry->d_inode->i_ino;
+	//dst_dentry->d_inode->i_ino = src_dentry->d_inode->i_ino;
 	return r;
 }
 

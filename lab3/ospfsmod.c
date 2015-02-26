@@ -470,6 +470,7 @@ ospfs_dir_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 * EXERCISE: Your code here */
 		if(entry_oi->oi_ftype == OSPFS_FTYPE_REG)
 		  {
+		    
 		    ok_so_far = filldir(dirent, od->od_name, strlen(od->od_name), f_pos, od->od_ino, DT_REG);
 		    if (ok_so_far >= 0)
 		      {
@@ -587,6 +588,8 @@ ospfs_unlink(struct inode *dirino, struct dentry *dentry)
 
 	od->od_ino = 0;
 	oi->oi_nlink--;
+	if(oi->oi_nlink <= 0 && oi->oi_ftype != OSPFS_FTYPE_SYMLINK)
+	  change_size(oi, 0);
 	return 0;
 }
 
@@ -628,7 +631,7 @@ allocate_block(void)
 	  if(bitvector_test(ospfs_block(hold), empty_block) == 1)//found free block
 	    {
 	      bitvector_clear(ospfs_block(hold), empty_block);//mark as allocated(0)
-	      eprintk("free block %u found\n", empty_block + (1024*(hold - 2)));
+	      //eprintk("free block %u found\n", empty_block + (1024*(hold - 2)));
 	      return (empty_block + (1024*(hold - 2))); //return the block number
 	    }
 	}
@@ -652,11 +655,13 @@ static void
 free_block(uint32_t blockno)
 {
 	/* EXERCISE: Your code here */
-  uint32_t start_data = ospfs_super->os_firstinob + ospfs_super->os_ninodes;
+  uint32_t start_data = ospfs_super->os_firstinob + ospfs_super->os_ninodes / OSPFS_BLKINODES;
   uint32_t bitmap_blk = 0;
   uint32_t bitmap_pos = blockno;
-  if(blockno < start_data)
+  if(blockno < start_data) {
+    //eprintk("Error in free block: blockno is %ld and start_data is %ld\n", blockno, start_data);
     return; //ERROR.............................................
+  }
 
   while(blockno > 1023)
     {
@@ -664,7 +669,7 @@ free_block(uint32_t blockno)
       bitmap_blk++;
     }
   bitvector_set(ospfs_block(2+bitmap_blk), bitmap_pos); //mark as free block(1)
-  eprintk("freed? %u\n", bitvector_test(ospfs_block(2+bitmap_blk), bitmap_pos));
+  //eprintk("freed? %u\n", bitvector_test(ospfs_block(2+bitmap_blk), bitmap_pos));
 }
 
 
@@ -936,6 +941,7 @@ remove_block(ospfs_inode_t *oi)
 	  return 0;
 	if(n <= OSPFS_NDIRECT)
 	{
+	  //eprintk("Freeing block %d\n", oi->oi_direct[n - 1]);
 	  if(oi->oi_direct[n - 1])
 	    free_block(oi->oi_direct[n - 1]);
 	  oi->oi_direct[n - 1] = 0;
@@ -946,6 +952,7 @@ remove_block(ospfs_inode_t *oi)
 	    return -EIO;
 	  block_contents = (uint32_t*) ospfs_block(oi->oi_indirect);
 	  if(n == OSPFS_NDIRECT + 1) {
+	    //eprintk("Freeing blocks %d and %d.\n", block_contents[0], oi->oi_indirect);
 	    free_block(block_contents[0]);
 	    block_contents[0] = 0;
 	    free_block(oi->oi_indirect);
@@ -954,6 +961,7 @@ remove_block(ospfs_inode_t *oi)
 	    return 0;
 	  }
 	  i = n - OSPFS_NDIRECT - 1;
+	  //eprintk("Freeing block %d\n", block_contents[i]);
 	  free_block(block_contents[i]);
 	  block_contents[i] = 0;
 	}
@@ -1046,15 +1054,17 @@ change_size(ospfs_inode_t *oi, uint32_t new_size)
 	  if(r < 0)
 	    goto abort;
 	}
-	if(!block_count)
+	if(!block_count) {
+	  //eprintk("Time to remove some blocks!\n");
 	  while (old_size_blocks > new_size_blocks + block_count) {
 	        /* EXERCISE: Your code here */
+	    
 	    r = remove_block(oi);
 	    block_count++;
 	    if(r < 0)
 	      goto abort;
 	  }
-
+	}
 	/* EXERCISE: Make sure you update necessary file meta data
 	             and return the proper value. */
 	oi->oi_size = new_size;
@@ -1203,7 +1213,7 @@ ospfs_read(struct file *filp, char __user *buffer, size_t count, loff_t *f_pos)
 static ssize_t
 ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
-  eprintk("Hello\n");
+  //  eprintk("Hello\n");
 	ospfs_inode_t *oi = ospfs_inode(filp->f_dentry->d_inode->i_ino);
 	int retval = 0;
 	size_t amount = 0;
@@ -1221,10 +1231,12 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	/* EXERCISE: Your code here */
 	if(*f_pos + count > oi->oi_size) //writing past end of file
 	  {
+	    //eprintk("Requesting a size change! fpos + count is %d, oi size is %ld\n", *f_pos + count, oi->oi_size);
 	    if(change_size(oi, *f_pos + count) < 0) {
 	      eprintk("change size failed!");
 	      return -1; //size not successfully changed
 	    }
+	    //eprintk("After change size, oi size is %ld\n", oi->oi_size);
 	  }
 
 	// Copy data block by block
@@ -1260,6 +1272,7 @@ ospfs_write(struct file *filp, const char __user *buffer, size_t count, loff_t *
 	}
 
     done:
+	//eprintk("Returning: oi_size is %ld\n", oi->oi_size);
 	return (retval >= 0 ? amount : retval);
 }
 
@@ -1471,7 +1484,6 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 	ospfs_direntry_t *od;
 	/* EXERCISE: Your code here. */
 	//return -EINVAL; // Replace this line
-	eprintk("Creating a new file!\n");
 	if(dentry->d_name.len > (OSPFS_DIRENTRY_SIZE - 5)) //filename too big
 	  return -ENAMETOOLONG;
 	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL)
@@ -1485,17 +1497,19 @@ ospfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidat
 
 	//find an empty inode
 	uint32_t j;
-	for(j = 2; j < (ospfs_super->os_ninodes*16); j++)
+	for(j = 2; j < (ospfs_super->os_ninodes); j++)
 	  {
 	    ospfs_inode_t *emp_inode = ospfs_inode(j);
 	    if(emp_inode->oi_nlink == 0)//found empty inode
 	      {
 		//initialize inode 
 		emp_inode->oi_size = 0;
-		eprintk("The size is %ld\n", emp_inode->oi_size);
 		emp_inode->oi_nlink = 1;
 		emp_inode->oi_ftype = OSPFS_FTYPE_REG;
 		emp_inode->oi_mode = mode;
+		memset(emp_inode->oi_direct, 0, 10);
+		emp_inode->oi_indirect = 0;
+		emp_inode->oi_indirect2 = 0;
 		//end of initialization
 		entry_ino = j;
 		break;
@@ -1550,10 +1564,44 @@ static int
 ospfs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 {
 	ospfs_inode_t *dir_oi = ospfs_inode(dir->i_ino);
-	uint32_t entry_ino = 0;
+	uint32_t entry_ino = 0, j;
+	ospfs_direntry_t *od;	
+	ospfs_symlink_inode_t *emp_inode;
+
+	if(dentry->d_name.len > OSPFS_MAXNAMELEN || strlen(symname) > OSPFS_MAXSYMLINKLEN)
+	  return -ENAMETOOLONG;
+	if(find_direntry(dir_oi, dentry->d_name.name, dentry->d_name.len) != NULL)
+	  return -EEXIST; //name already exists
+
+	od = create_blank_direntry(dir_oi);
+	if (IS_ERR(od))
+	  return PTR_ERR(od); //error pointer returned
+	  
+
+	//find an empty inode
+	for(j = 2; j < (ospfs_super->os_ninodes); j++)
+	  {
+	    emp_inode = (ospfs_symlink_inode_t*) ospfs_inode(j);
+	    if(emp_inode->oi_nlink == 0)//found empty inode
+	      {
+		//initialize inode 
+		emp_inode->oi_size = strlen(symname);
+		emp_inode->oi_nlink = 1;
+		emp_inode->oi_ftype = OSPFS_FTYPE_SYMLINK;
+		memcpy(emp_inode->oi_symlink, symname, strlen(symname) + 1);
+		//end of initialization
+		entry_ino = j;
+		break;
+	      }
+	  }
+
+	//initialize directory entry
+	memcpy(od->od_name, dentry->d_name.name, dentry->d_name.len);
+	od->od_name[dentry->d_name.len] = '\0';
+	od->od_ino = entry_ino;    
 
 	/* EXERCISE: Your code here. */
-	return -EINVAL;
+	//	return -EINVAL;
 
 	/* Execute this code after your function has successfully created the
 	   file.  Set entry_ino to the created file's inode number before
@@ -1586,8 +1634,28 @@ ospfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
 	ospfs_symlink_inode_t *oi =
 		(ospfs_symlink_inode_t *) ospfs_inode(dentry->d_inode->i_ino);
+	char *testing;
+	char *question, *colon, *end;
+	question = strchr(oi->oi_symlink, '?');
+	colon = strchr(oi->oi_symlink, ':');
+	end = strchr(oi->oi_symlink, '\0');
+	//char file2[OSPFS_MAXSYMLINKLEN];
 	// Exercise: Your code here.
-
+	if(question && colon && question < colon && strstr(oi->oi_symlink, "root") == oi->oi_symlink) {
+	  testing = (char*) kmalloc(oi->oi_size, GFP_ATOMIC);
+	  if(current->uid == 0)
+	  {
+	    memcpy(testing, question + 1, colon - question - 1);
+	    testing[colon - question - 1] = '\0';
+	  }
+	  else
+	  {
+	    memcpy(testing, colon + 1, end - colon - 1);
+	    testing[end - colon - 1] = '\0';
+	  }
+	  nd_set_link(nd, testing);
+	  return (void*) 0;
+	}
 	nd_set_link(nd, oi->oi_symlink);
 	return (void *) 0;
 }
@@ -1656,6 +1724,6 @@ module_init(init_ospfs_fs)
 module_exit(exit_ospfs_fs)
 
 // Information about the module
-MODULE_AUTHOR("Skeletor");
+MODULE_AUTHOR("Andrew Lee & Michelle Chang");
 MODULE_DESCRIPTION("OSPFS");
 MODULE_LICENSE("GPL");

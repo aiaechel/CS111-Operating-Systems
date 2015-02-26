@@ -11,14 +11,14 @@
 # information you'd like us to know, please add it at the end of the file.
 
 # Partner 1
-Name: 
-Student ID: 
-Email: 
+Name: Andrew Lee
+Student ID: 204304351
+Email: aiaechel@ucla.edu
 
 # Partner 2 (if you're working in a team)
-Name: 
-Student ID: 
-Email: 
+Name: Michelle Chang
+Student ID: 904262084
+Email: michellecsr@ucla.edu
 
 # Extra credit problems
 #Extra credit problem: none

@@ -784,7 +784,7 @@ add_block(ospfs_inode_t *oi)
 	uint32_t n = ospfs_size2nblocks(oi->oi_size);
 
 	// keep track of allocations to free in case of -ENOSPC
-	uint32_t *allocated[2] = { 0, 0 };
+	//uint32_t *allocated[2] = { 0, 0 };
 
 	int i;
 	uint32_t indirect = 0, indirect2 = 0;
@@ -1053,7 +1053,6 @@ remove_block(ospfs_inode_t *oi)
 static int
 change_size(ospfs_inode_t *oi, uint32_t new_size)
 {
-	uint32_t old_size = oi->oi_size;
 	uint32_t old_size_blocks = ospfs_size2nblocks(oi->oi_size);
 	uint32_t new_size_blocks = ospfs_size2nblocks(new_size);
 	int block_count = 0;
